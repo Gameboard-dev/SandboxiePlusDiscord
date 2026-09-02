@@ -1,11 +1,11 @@
-The following guide assumes a Year's Sandboxie-Personal-Advanced subscription.
+The following guide assumes a year's Sandboxie-Personal-Advanced subscription.
 This can be reused on unlimited devices and can be used after the license expiry - although updates require renewal.
 
 Create a new secure-encrypted box. Make sure to **"Mount Box Image"** with **"Protect Box Root From Access By Unsandboxed Processes"**. This protects the sandboxed filesystem from external access. You can verify this at `C:\Sandbox\YOUR_USER` when the sandbox is active. Also check **"Lock the box when all processes top"**.
 
 The following setting should be enabled in Sandboxie-Plus's compatibility settings (**App Templates**) or Discord will fail to initiate on Windows 11: **"Chromium Fix for Windows 11"**.
 
-Then run the following commands inside the encrypted sandbox:
+Then run the following commands inside the encrypted sandbox by right clicking "Run" -> "Standard Applications" -> "Command Console (Admin)":
 
 ```cmd
 
