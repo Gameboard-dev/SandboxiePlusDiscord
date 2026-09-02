@@ -35,13 +35,14 @@ copy C:\DiscordExtract\RELEASES "%LocalAppData%\Discord\packages\" /Y
 
 ```
 
-Execute the following command to run your installed Discord executable:
+Sandboxie-Plus provides an embedded viewer inside the app for creating shortcuts directly, or you can execute the following command to run your installed Discord executable directly:
 
 ```cmd
-"D:\Sandboxie\Installer\SbiePlus_x64\Start.exe" /box:YOUR_BOX_NAME cmd.exe /c start "" "%LocalAppData%\Discord\Update.exe" --processStart Discord.exe --process-start-args="--no-sandbox"
+"D:\Sandboxie\Installer\SbiePlus_x64\Start.exe" /box:YOUR_BOX_NAME cmd.exe /c start "" "%LocalAppData%\Discord\Update.exe" --processStart Discord.exe
 ```
 
-Note: Sandboxie-Plus provides an embedded filesystem viewer inside the app for creating shortcuts directly.
+Verify that the Sandbox directory cannot be accessed in Windows File Explorer outside the box:
+`C:\Sandbox\YOUR_USER\YOUR_SANDBOX\user\current\AppData\Roaming\discord`. Attempting to open `C:\Sandbox\YOUR_USER` or any path after it should result in an **access denied** error from Windows.
 
-Working on Windows 11 Pro as of 02/09/2026 with enhanced security features enabled.
+**Working on Windows 11 Pro as of 02/09/2026 with enhanced security features enabled**
 
