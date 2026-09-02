@@ -41,8 +41,9 @@ Sandboxie-Plus provides an embedded viewer inside the app for creating shortcuts
 "D:\Sandboxie\Installer\SbiePlus_x64\Start.exe" /box:YOUR_BOX_NAME cmd.exe /c start "" "%LocalAppData%\Discord\Update.exe" --processStart Discord.exe
 ```
 
-Verify that the Sandbox directory cannot be accessed in Windows File Explorer outside the box:
-`C:\Sandbox\YOUR_USER\YOUR_SANDBOX\user\current\AppData\Roaming\discord`. Attempting to open `C:\Sandbox\YOUR_USER` or any path after it should result in an **access denied** error from Windows.
+Verify that the Sandbox directory cannot be accessed in Windows File Explorer outside the box: `C:\Sandbox\YOUR_USER\YOUR_SANDBOX\user\current\AppData\Roaming\discord`. Attempting to open `C:\Sandbox\YOUR_USER` or any path after it should result in an **access denied** error from Windows.
+
+For additional security/convenience `msedge.exe` (or whatever your browser process is) can be added in `Program Control` -> `Breakout Programs`. If instead you want Edge to land in a dedicated WebBrowse box, you pair the breakout with a BreakoutDocument / target-box directive so the broken-out program is captured into that other box rather than the host.
 
 **Working on Windows 11 Pro as of 02/09/2026 with enhanced security features enabled**
 
