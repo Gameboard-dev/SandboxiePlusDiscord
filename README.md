@@ -47,3 +47,6 @@ with a password and then executing:
 ```
 
 Working on Windows 11 Pro as of 02/09/2026 with security features enabled.
+
+Note the following setting should be enabled in Sandboxie-Plus's compatibility settings (**App Templates**) or Discord will fail to initiate on Windows 11: **"Chromium Fix for Windows 11"**.
+
