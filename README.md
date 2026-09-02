@@ -1,7 +1,11 @@
 The following guide assumes a Year's Sandboxie-Personal-Advanced subscription.
 This can be reused on unlimited devices and can be used after the license expiry - although updates require renewal.
 
-Run the following commands inside a Sandboxie-Plus encrypted sandbox:
+Create a new secure-encrypted box. Make sure to **"Mount Box Image"** with **"Protect Box Root From Access By Unsandboxed Processes"**. This protects the sandboxed filesystem from external access. You can verify this at `C:\Sandbox\YOUR_USER` when the sandbox is active. Also check **"Lock the box when all processes top"**.
+
+The following setting should be enabled in Sandboxie-Plus's compatibility settings (**App Templates**) or Discord will fail to initiate on Windows 11: **"Chromium Fix for Windows 11"**.
+
+Then run the following commands inside the encrypted sandbox:
 
 ```cmd
 
@@ -31,22 +35,13 @@ copy C:\DiscordExtract\RELEASES "%LocalAppData%\Discord\packages\" /Y
 
 ```
 
-Execute the following command to run your installed Discord executable
-in a Windows Shortcut.
+Execute the following command to run your installed Discord executable:
 
-You could pass the unlock password to the shortcut using the following command:
-```cmd
-"D:\Sandboxie\Installer\SbiePlus_x64\Start.exe" /key:YOUR_PASSWORD_HERE /box:Discord /mount
-"D:\Sandboxie\Installer\SbiePlus_x64\Start.exe" /box:YOUR_BOX_NAME cmd.exe /c start "" "%LocalAppData%\Discord\Update.exe" --processStart Discord.exe --process-start-args="--no-sandbox"
-```
-
-However, this is insecure, and in practice Sandboxie-Plus recommends unlocking the box once
-with a password and then executing:
 ```cmd
 "D:\Sandboxie\Installer\SbiePlus_x64\Start.exe" /box:YOUR_BOX_NAME cmd.exe /c start "" "%LocalAppData%\Discord\Update.exe" --processStart Discord.exe --process-start-args="--no-sandbox"
 ```
 
-Working on Windows 11 Pro as of 02/09/2026 with security features enabled.
+Note: Sandboxie-Plus provides an embedded filesystem viewer inside the app for creating shortcuts directly.
 
-Note the following setting should be enabled in Sandboxie-Plus's compatibility settings (**App Templates**) or Discord will fail to initiate on Windows 11: **"Chromium Fix for Windows 11"**.
+Working on Windows 11 Pro as of 02/09/2026 with enhanced security features enabled.
 
