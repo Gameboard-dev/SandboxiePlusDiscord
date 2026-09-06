@@ -62,11 +62,18 @@ right-click the box → **Run → Standard Applications → Command Console (Adm
 
 Then run one of the following.
 
-**Discord (portable build):**
+**Discord**
 
-```cmd
-curl -L -o "%USERPROFILE%\Downloads\discord-portable-setup.exe" "https://github.com/portapps/discord-portable/releases/download/1.0.9232-25/discord-portable-win64-1.0.9232-25-setup.exe"
-"%USERPROFILE%\Downloads\discord-portable-setup.exe" /S
+The manual install lays down Discord's files by hand rather than through the official installer. This produces an install that Discord's updater does not consider fully "finalized." Discord uses a native (Rust) updater — `updater.node`, loaded by the app on every launch — which validates its install plan against Discord's servers each time Discord starts.
+
+When the installed version is the current published version, the updater tries tovalidate/finalize the *running* version. It finds `Discord.exe` already running from the target directory and treats this as fatal, throwing `InconsistentInstallerState: Attempt to install host that is currently running`. The window opens for a second, then closes.
+
+Installing a version that is *behind* the server (here 1.0.9255) sidesteps the crash, because it routes the updater down the ordinary update path instead of the fatal finalize-the-running-version path.
+
+Because the installed version is behind the server, Discord's updater does exactly what it's designed to do: on launch it detects a newer version, downloads it in the background, and applies it. So the manual install is only a *bootstrap* — a known-good starting point that launches cleanly — and Discord brings itself up to the current version automatically from there. You end up running the latest Discord without ever hitting the installer (which fails in the Privacy Enhanced box) and without hitting the updater crash.
+
+```cmd#
+"D:\Sandboxie\discord-sandbox\scripts\shared\install-discord.bat"
 ```
 
 **Dorion (lightweight Discord client):**
