@@ -18,7 +18,7 @@ Create a new **secure, encrypted** box. During creation:
 You can verify root protection is active at `C:\Sandbox\YOUR_USER` while the
 sandbox is running (see [Verifying isolation](#5-verifying-isolation) below).
 
-![alt text](image.png)
+![alt text](images/image.png)
 
 ![alt text](images/image-1.png)
 
