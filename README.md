@@ -49,7 +49,7 @@ In Sandboxie-Plus compatibility settings (**App Templates**), enable:
 Without this, Discord (and other Chromium-based apps) will fail to start on
 Windows 11.
 
-You should also disable "Make applications thing they are running elevated" because this interferes with Dorion's startup process.
+Disable "Make applications think they are running elevated" (the FakeAdminRights setting). Dorion's WebView2 rendering engine performs its own privilege checks at startup, and Sandboxie's fake elevation status conflicts with this, causing the app to launch with no visible window (silent WebView2 initialization failure, often paired with an SBIE2189 message or webview IPC error in the logs).
 
 ---
 
