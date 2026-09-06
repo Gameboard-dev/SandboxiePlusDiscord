@@ -297,6 +297,19 @@ You can confirm the hiding works: with the box running, create a marker file suc
 `HOSTONLY.txt` in the host `%LocalAppData%\Discord\` directory, then list that directory
 from a **sandboxed** console — the marker should not appear. Delete it afterward. 
 
+### Verifying Task Icon Persistence
+
+Flush and reload the Windows icon cache:
+
+```sh
+taskkill /f /im explorer.exe
+ie4uinit.exe -show
+del /a /q "%LocalAppData%\IconCache.db"
+del /a /q "%LocalAppData%\Microsoft\Windows\Explorer\iconcache*"
+del /a /q "%LocalAppData%\Microsoft\Windows\Explorer\thumbcache*"
+start explorer.exe
+```
+
 ---
 
 *Confirmed working on Windows 11 Pro as of 2026-02-09 with enhanced security features enabled.*
