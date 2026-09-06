@@ -228,20 +228,28 @@ inspection while the mount runs.
 
 ### Troubleshooting Icon Not Appearing on Windows 11
 
-If an application icon fails to appear on the taskbar, the taskbar icon cache may need to be refreshed with access to the icon location. To resolve this issue, disable box root protection, launch the application, and reset the icon cache by running the following commands in Command Prompt as Administrator: `taskkill /f /im explorer.exe` to terminate Windows Explorer, `cd %localappdata%` to navigate to the local application data folder, `del IconCache.db` to remove the corrupted cache file, and `start explorer.exe` to restart Windows Explorer. Windows will automatically rebuild the icon cache upon restart, restoring proper icon display on the taskbar.
+Make sure the installation directory (NOT the session/login token directory) is mapped OUTSIDE the box:
 
-```sh
-taskkill /f /im explorer.exe
-cd %localappdata%
-del IconCache.db
-start explorer.exe
+```ini
+OpenFilePath=%LocalAppData%\Discord\
 ```
 
-Note Sandboxie-Plus is unable to merge the icons on the taskbar:
+### Duplicate Taskbar Icons
 
-![alt text](images/image-11.png)
+The AUMID needs to be set on the shortcut to be identical to the one Sandboxie-Plus sets:
+
+Make sure the sandboxed window is open before running the command in PowerShell:
+
+```PowerShell
+.\scripts\get-window-aumid.ps1 -ProcessName Discord
+```
+
+![alt text](images/image-12.png)
+
+```PowerShell
+.\scripts\set-shortcut-aumid.ps1 -Aumid 'Sandbox.Discord.com_squirrel_Discord_Discord' -ShortcutName 'Discord.lnk' -RestartExplorer
+```
 
 ---
 
-*Confirmed working on Windows 11 Pro as of 2026-02-09 with enhanced security
-features enabled.*
+*Confirmed working on Windows 11 Pro as of 2026-02-09 with enhanced security features enabled.*
