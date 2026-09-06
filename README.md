@@ -1,49 +1,180 @@
-The following guide assumes a year's Sandboxie-Personal-Advanced subscription.
-This can be reused on unlimited devices and can be used after the license expiry - although updates require renewal.
+# Encrypted Sandboxie-Plus Discord Setup
 
-Create a new secure-encrypted box. Make sure to **"Mount Box Image"** with **"Protect Box Root From Access By Unsandboxed Processes"**. This protects the sandboxed filesystem from external access. You can verify this at `C:\Sandbox\YOUR_USER` when the sandbox is active. Also check **"Lock the box when all processes top"**.
+> **Prerequisite:** This guide assumes a one-year Sandboxie-Plus Personal-Advanced
+> subscription. The license can be reused on unlimited devices and continues to
+> work after expiry — only *updates* require renewal.
 
-The following setting should be enabled in Sandboxie-Plus's compatibility settings (**App Templates**) or Discord will fail to initiate on Windows 11: **"Chromium Fix for Windows 11"**.
+---
 
-Then run the following commands inside the encrypted sandbox by right clicking "Run" -> "Standard Applications" -> "Command Console (Admin)":
+## 1. Create the encrypted box
+
+Create a new **secure, encrypted** box. During creation:
+
+- Enable **"Mount Box Image"** with **"Protect Box Root From Access By Unsandboxed Processes"**.
+  This protects the sandboxed filesystem from any process outside the box.
+- Enable **"Lock the box when all processes stop"** so the encrypted image
+  auto-unmounts once the last sandboxed program exits.
+
+You can verify root protection is active at `C:\Sandbox\YOUR_USER` while the
+sandbox is running (see [Verifying isolation](#5-verifying-isolation) below).
+
+![alt text](image.png)
+
+![alt text](image-1.png)
+
+![alt text](image-2.png)
+
+![alt text](image-3.png)
+
+![alt text](image-4.png)
+
+![alt text](image-5.png)
+
+![alt text](image-6.png)
+
+![alt text](image-7.png)
+
+![alt text](image-8.png)
+
+![alt text](images/image-10.png)
+
+---
+
+## 2. Compatibility settings (required on Windows 11)
+
+In Sandboxie-Plus compatibility settings (**App Templates**), enable:
+
+- **"Chromium Fix for Windows 11"**
+
+Without this, Discord (and other Chromium-based apps) will fail to start on
+Windows 11.
+
+You should also disable "Make applications thing they are running elevated" because this interferes with Dorion's startup process.
+
+---
+
+## 3. Install Discord inside the box
+
+Make sure the box is mounted WITHOUT root protection for the installation. If root protection is on, the box's file system cannot be viewed in Windows Explorer.
+
+Open a console **inside the encrypted sandbox**:
+right-click the box → **Run → Standard Applications → Command Console (Admin)**.
+
+Then run one of the following.
+
+**Discord (portable build):**
 
 ```cmd
-
-curl -L -o "%USERPROFILE%\Downloads\DiscordSetup.exe" "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x64"
-
-curl -L -o "%TEMP%\7z-installer.exe" "https://github.com/ip7z/7zip/releases/download/26.02/7z2602-x64.exe"
-
-"%TEMP%\7z-installer.exe" /S
-
-"C:\Program Files\7-Zip\7z.exe" x "%USERPROFILE%\Downloads\DiscordSetup.exe" -oC:\DiscordExtract -y
-
-"C:\Program Files\7-Zip\7z.exe" x "C:\DiscordExtract\Discord-1.0.9255-full.nupkg" -oC:\DiscordApp -y
-
-mkdir "%LocalAppData%\Discord\app-1.0.9255"
-
-xcopy "C:\DiscordApp\lib\net45\*" "%LocalAppData%\Discord\app-1.0.9255\" /E /I /Y
-
-copy C:\DiscordExtract\Update.exe "%LocalAppData%\Discord\Update.exe" /Y
-
-mkdir "%LocalAppData%\Discord\packages"
-
-copy C:\DiscordExtract\Discord-1.0.9255-full.nupkg "%LocalAppData%\Discord\packages\" /Y
-
-copy C:\DiscordExtract\RELEASES "%LocalAppData%\Discord\packages\" /Y
-
-"%LocalAppData%\Discord\app-1.0.9255\Discord.exe"
-
+curl -L -o "%USERPROFILE%\Downloads\discord-portable-setup.exe" "https://github.com/portapps/discord-portable/releases/download/1.0.9232-25/discord-portable-win64-1.0.9232-25-setup.exe"
+"%USERPROFILE%\Downloads\discord-portable-setup.exe" /S
 ```
 
-Sandboxie-Plus provides an embedded viewer inside the app for creating shortcuts directly, or you can execute the following command to run your installed Discord executable directly:
+**Dorion (lightweight Discord client):**
+
+```cmd
+curl -L -o "%USERPROFILE%\Downloads\Dorion-setup.exe" "https://github.com/SpikeHD/Dorion/releases/download/v6.13.0/Dorion_6.13.0_x64-setup.exe"
+"%USERPROFILE%\Downloads\Dorion-setup.exe"
+```
+
+Then right click the box and create a shortcut for the installed Dorion on your desktop:
+
+![alt text](image-9.png)
+
+Create a shared icons folder for programs inside and outside the sandbox to use, and use this icon for both of them.
+
+---
+
+## 4. Resource access
+
+> **This is how you get files in and out of the encrypted box.**
+
+The box's file system is sealed: with root protection on, the sandboxed
+**Explorer closes immediately** and there is no in-box file browser by default,
+so you cannot drag files in through a sandboxed window. To move files between
+the host and the box, **one host folder is deliberately mapped through** — your
+**Downloads** folder:
+
+```
+C:\Users\megatron\Downloads
+```
+
+Add this path under **Resource Access → File Access → Direct Access**
+(the "Open for All Programs" option). Once set:
+
+- Files you drop into `Downloads` from the **normal, unsandboxed Windows File
+  Explorer** are visible to programs **inside** the box.
+- Files saved to `Downloads` from **inside** the box are visible to the host.
+
+`Downloads` is the single, intentional opening in an otherwise sealed box — treat
+it as the airlock. Anything outside it stays isolated. Keep this path as narrow
+as you're comfortable with; widening it widens the host↔box surface.
+
+*(Optional, browse inside the box at runtime instead of relying on Downloads):*
+Explorer++ is a portable file manager that runs **inside** the sandbox, giving
+you an in-box browser without punching more holes through root protection:
+
+```cmd
+curl -L -o "%USERPROFILE%\Downloads\explorerpp.zip" "https://github.com/derceg/explorerplusplus/releases/download/version-1.4.0/explorerpp_x64.zip"
+mkdir "%USERPROFILE%\Downloads\Explorer++"
+tar -xf "%USERPROFILE%\Downloads\explorerpp.zip" -C "%USERPROFILE%\Downloads\Explorer++"
+"%USERPROFILE%\Downloads\Explorer++\Explorer++.exe"
+```
+
+---
+
+## 5. Launching Discord
+
+Sandboxie-Plus can create shortcuts directly from its embedded viewer, or you
+can launch the installed executable from a command line:
 
 ```cmd
 "D:\Sandboxie\Installer\SbiePlus_x64\Start.exe" /box:YOUR_BOX_NAME cmd.exe /c start "" "%LocalAppData%\Discord\Update.exe" --processStart Discord.exe
 ```
 
-Verify that the Sandbox directory cannot be accessed in Windows File Explorer outside the box: `C:\Sandbox\YOUR_USER\YOUR_SANDBOX\user\current\AppData\Roaming\discord`. Attempting to open `C:\Sandbox\YOUR_USER` or any path after it should result in an **access denied** error from Windows.
+Replace `YOUR_BOX_NAME` with your box's name. If you installed Dorion instead,
+point the launch at Dorion's executable inside the box.
 
-For additional security/convenience `msedge.exe` (or whatever your browser process is) can be added in `Program Control` -> `Breakout Programs`. If instead you want Edge to land in a dedicated WebBrowse box, you pair the breakout with a BreakoutDocument / target-box directive so the broken-out program is captured into that other box rather than the host.
+---
 
-**Working on Windows 11 Pro as of 02/09/2026 with enhanced security features enabled**
+## 6. Links open outside the sandbox — msedge.exe is a breakout process
 
+> **`msedge.exe` is configured as a breakout process, so every link you click in
+> Discord opens in your normal browser *outside* the sandbox.**
+
+This is set under **Program Control → Breakout Programs** (INI:
+`BreakoutProcess=msedge.exe`). When Discord hands a URL to the browser, Sandboxie
+lets that browser process "break out" and run **unsandboxed on the host**, rather
+than launching a browser trapped inside the box. Practically, that means:
+
+- Clicking a link in Discord → opens in your host browser, normal session,
+  normal profile.
+- The sandbox stays dedicated to Discord itself; general web browsing happens on
+  the host as usual.
+
+Substitute your actual browser's process name if you don't use Edge (e.g.
+`chrome.exe`, `firefox.exe`).
+
+**Advanced variant:** if you'd rather the broken-out browser land in a *dedicated*
+web-browsing box instead of the host, pair the breakout with a
+BreakoutDocument / target-box directive so the broken-out program is captured
+into that other box rather than escaping to the host.
+
+---
+
+## 7. Verifying isolation
+
+With the box running, confirm the sandboxed filesystem is sealed from the host.
+In normal Windows File Explorer, try to open:
+
+```
+C:\Sandbox\YOUR_USER\YOUR_SANDBOX\user\current\AppData\Roaming\discord
+```
+
+Opening `C:\Sandbox\YOUR_USER` — or any path beneath it — should produce an
+**Access Denied** error from Windows. If you can browse in, root protection is
+not active; revisit step 1.
+
+---
+
+*Confirmed working on Windows 11 Pro as of 2026-02-09 with enhanced security
+features enabled.*
