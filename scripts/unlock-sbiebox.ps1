@@ -36,7 +36,7 @@ $CipherFile = "$env:LOCALAPPDATA\sbiebox.bin"
 $UseProtectedMount = $true
 
 # Program to launch inside the box after mounting, plus its arguments.
-$LaunchProgram = "C:\Sandbox\megatron\Discord\user\current\AppData\Local\Discord\Update.exe" # "C:\Sandbox\megatron\Discord\user\current\AppData\Local\Dorion\Dorion.exe"
+$LaunchProgram = "$env:LOCALAPPDATA\Discord\Update.exe" # "C:\Sandbox\megatron\Discord\user\current\AppData\Local\Dorion\Dorion.exe"
 $LaunchArgs    = @("--processStart", "Discord.exe")
 
 # Set $false to only mount the box and not launch anything (e.g. for a pure

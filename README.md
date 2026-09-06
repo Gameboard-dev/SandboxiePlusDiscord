@@ -76,6 +76,10 @@ Because the installed version is behind the server, Discord's updater does exact
 "D:\Sandboxie\discord-sandbox\scripts\shared\install-discord.bat"
 ```
 
+IMPORTANT: Before running this script, ensure that you have the installation path (NOT the session cookie store path in 'Roaming/' mapped as a Sandboxie folder outside the encrypted box, for the icon to show up properly):
+
+![alt text](image.png)
+
 **Dorion (lightweight Discord client):**
 
 ```cmd
