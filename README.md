@@ -80,7 +80,8 @@ Then right click the box and create a shortcut for the installed Dorion on your 
 
 ![alt text](images/image-9.png)
 
-Create a shared icons folder for programs inside and outside the sandbox to use, and use this icon for both of them.
+Map the shortcut to use your chosen icon. Note that when the box is unmounted or protected, icons
+inside the box won't be available to Windows externally, and likewise to icons external; unless mapped to a shared folder.
 
 ---
 
@@ -101,17 +102,14 @@ C:\Users\megatron\Downloads
 Add this path under **Resource Access → File Access → Direct Access**
 (the "Open for All Programs" option). Once set:
 
-- Files you drop into `Downloads` from the **normal, unsandboxed Windows File
-  Explorer** are visible to programs **inside** the box.
-- Files saved to `Downloads` from **inside** the box are visible to the host.
-
 `Downloads` is the single, intentional opening in an otherwise sealed box — treat
 it as the airlock. Anything outside it stays isolated. Keep this path as narrow
 as you're comfortable with; widening it widens the host↔box surface.
 
-*(Optional, browse inside the box at runtime instead of relying on Downloads):*
-Explorer++ is a portable file manager that runs **inside** the sandbox, giving
-you an in-box browser without punching more holes through root protection:
+
+#### [Optional] Browse inside the box at runtime even when it's locked
+
+explorer.exe is the Windows shell itself, not just a file browser — it needs broad window-station, IPC, and COM access to function, which is exactly what a hardened/privacy-mode box restricts by default. Running it inside such a box typically crashes it immediately. Explorer++ works because it's a standalone app that browses files without needing shell-level privileges. It can be installed and opened using the following command:
 
 ```cmd
 curl -L -o "%USERPROFILE%\Downloads\explorerpp.zip" "https://github.com/derceg/explorerplusplus/releases/download/version-1.4.0/explorerpp_x64.zip"
@@ -171,8 +169,42 @@ C:\Sandbox\YOUR_USER\YOUR_SANDBOX\user\current\AppData\Roaming\discord
 ```
 
 Opening `C:\Sandbox\YOUR_USER` — or any path beneath it — should produce an
-**Access Denied** error from Windows. If you can browse in, root protection is
-not active; revisit step 1.
+**Access Denied** error from Windows.
+
+## 8. Automatic unlock (TPM-sealed passphrase)
+
+Rather than typing the box password each time, the passphrase is sealed to the
+machine's TPM and gated behind Windows Hello, then handed to Sandboxie to mount
+the box and open Discord. Two scripts handle this.
+
+Run **`setup-sbiebox.ps1` once**, as the user who will launch the box. It creates
+a non-exportable RSA key inside the TPM (the private key can never leave the
+chip), prompts for the box passphrase a single time, encrypts it with that key,
+and writes only the ciphertext to `%LOCALAPPDATA%\sbiebox.bin` — the plaintext is
+never stored. Because the key is created with a ProtectKey UI policy, the TPM
+will demand Windows Hello (PIN or biometric) on every future decrypt. Re-running
+setup is blocked once the key exists; see the script header to reset.
+
+**`unlock-sbiebox.ps1` runs on every launch** and is what the shortcut actually
+calls. It first checks whether the box is already mounted; if it is, it skips
+straight to launching another client instance. If not, it opens the TPM key —
+triggering the Windows Hello prompt — decrypts the blob to recover the
+passphrase, mounts the encrypted box with root protection, scrubs the passphrase
+from memory, and launches Dorion inside the box. One shortcut therefore both
+opens the box the first time and relaunches afterward.
+
+The `.ps1` is invoked through a small VBS wrapper (`launch-discord.vbs`) so no
+console window flashes; point your shortcut's target at that `.vbs`, give it
+Discord's icon, and pin it anywhere. A single click releases the passphrase after
+Windows Hello, mounts the box, and opens Dorion.
+
+The box password is never typed routinely or stored in plaintext — it
+exists only as TPM-sealed ciphertext, useless without this machine's TPM, and
+unlockable only after Windows Hello confirms it's you. Combined with the
+auto-unmount from step 1, the encrypted box is mounted on demand and torn down
+when you're done. Note one boundary: mounting passes the passphrase on
+`Start.exe`'s command line, where it's briefly visible to local process
+inspection while the mount runs.
 
 ---
 
