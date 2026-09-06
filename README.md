@@ -313,3 +313,7 @@ start explorer.exe
 ---
 
 *Confirmed working on Windows 11 Pro as of 2026-02-09 with enhanced security features enabled.*
+
+![alt text](images/image-13.png)
+
+![alt text](images/image-14.png)
