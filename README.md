@@ -129,8 +129,17 @@ can launch the installed executable from a command line:
 "D:\Sandboxie\Installer\SbiePlus_x64\Start.exe" /box:YOUR_BOX_NAME cmd.exe /c start "" "%LocalAppData%\Discord\Update.exe" --processStart Discord.exe
 ```
 
+```cmd
+"D:\Sandboxie\Installer\SbiePlus_x64\Start.exe" /box:YOUR_BOX_NAME cmd.exe /c start "" 
+"C:\Sandbox\megatron\Discord\user\current\AppData\Local\Dorion\Dorion.exe"
+```
+
 Replace `YOUR_BOX_NAME` with your box's name. If you installed Dorion instead,
 point the launch at Dorion's executable inside the box.
+
+Alternatively you can create a shortcut via the Sandboxie-Plus GUI:
+
+![alt text](images/image-9.png)
 
 ---
 
