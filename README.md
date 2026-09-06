@@ -289,6 +289,8 @@ host files, while the sandboxed runtime is insulated from any change made to the
 the host copy is hidden from the box, Discord must be installed *inside* the box
 (step [3](#3-install-discord-inside-the-box)) — which this setup already does.
 
+See also: https://sandboxie-plus.com/sandboxie/writefilepath/
+
 The only remaining route to that code is execution *inside* the box itself (e.g. an
 untrusted Discord mod or plugin). Running **vanilla Discord and nothing else** in the box
 keeps that path closed as well.
