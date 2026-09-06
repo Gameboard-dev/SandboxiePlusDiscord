@@ -250,6 +250,53 @@ Make sure the sandboxed window is open before running the command in PowerShell:
 .\scripts\set-shortcut-aumid.ps1 -Aumid 'Sandbox.Discord.com_squirrel_Discord_Discord' -ShortcutName 'Discord.lnk' -RestartExplorer
 ```
 
+### Full Isolation
+
+Change the mapping in `Sandboxie.ini` to the following for `%LocalAppData%\Discord\`:
+
+```
+WriteFilePath=%LocalAppData%\Discord\
+```
+
+This allows the taskbar to resolve the icon (write-only `%LocalAppData%\Discord\`) BUT edits/changes to the directory outside the sandboxed runtime process DO NOT CHANGE what the box is using internally.
+
+This protects against **host-side client injection** — the one seam left open by the
+`OpenFilePath` icon fix above.
+
+With `OpenFilePath`, the sandboxed Discord reads its program files *directly from the
+host*, so any process running on the host as your user — **no admin required** — can
+write malicious JavaScript into Discord's core module:
+
+```
+%LocalAppData%\Discord\app-<version>\modules\discord_desktop_core-1\discord_desktop_core\index.js
+```
+
+Discord does not verify or sign these module files at load time, so on the next launch
+the box would **read that host file and execute it in-process, with your live token in
+memory**. This is exactly how a Discord token grabber persists and lifts a *valid,
+current* token without ever touching the encrypted session store — that store lives in
+`Roaming\` inside the box and is already invisible to the host (see
+[Verifying isolation](#7-verifying-isolation)). The install directory was the only piece
+still being read from the host, and therefore the only place an on-host grabber could
+reach code that runs inside the box.
+
+`WriteFilePath` closes it. A write-only path hides the host copy of
+`%LocalAppData%\Discord\` **from sandboxed processes only** — the box sees just its own
+in-box binaries and never reads host-side edits, so an injected `index.js` planted on the
+host has no effect on what runs inside. Host processes still see the real directory, which
+is why the **taskbar icon continues to resolve**: the shell (a host process) reads the
+host files, while the sandboxed runtime is insulated from any change made to them. Because
+the host copy is hidden from the box, Discord must be installed *inside* the box
+(step [3](#3-install-discord-inside-the-box)) — which this setup already does.
+
+The only remaining route to that code is execution *inside* the box itself (e.g. an
+untrusted Discord mod or plugin). Running **vanilla Discord and nothing else** in the box
+keeps that path closed as well.
+
+You can confirm the hiding works: with the box running, create a marker file such as
+`HOSTONLY.txt` in the host `%LocalAppData%\Discord\` directory, then list that directory
+from a **sandboxed** console — the marker should not appear. Delete it afterward. 
+
 ---
 
 *Confirmed working on Windows 11 Pro as of 2026-02-09 with enhanced security features enabled.*
