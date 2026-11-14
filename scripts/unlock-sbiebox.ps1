@@ -43,6 +43,14 @@ $LaunchArgs    = @("--processStart", "Discord.exe")
 # login-time mount task rather than a launch shortcut).
 $LaunchAfterMount = $true
 
+# Boxes mounted through Start.exe never lock on their own: SbieDll_Mount
+# hard-codes auto_unmount = FALSE, so the box's "lock when all processes stop"
+# option does not apply. When $true, the instance that mounted the box keeps
+# running hidden and unmounts it once the box has been empty for two
+# consecutive polls. The service refuses to unmount while anything is running.
+$UnmountWhenEmpty = $true
+$PollSeconds      = 5
+
 # ============================================================================
 #  END CONFIGURATION
 # ============================================================================
@@ -83,6 +91,7 @@ function Get-BoxProcessCount {
 
 $procCount = Get-BoxProcessCount $StartExe $BoxName
 $alreadyUp = ($null -ne $procCount -and $procCount -gt 0)
+$mountedHere = $false
 
 if (-not $alreadyUp) {
 
@@ -106,11 +115,16 @@ if (-not $alreadyUp) {
             $rsa.Decrypt($cipher, [System.Security.Cryptography.RSAEncryptionPadding]::OaepSHA256))
 
         $mountFlag = if ($UseProtectedMount) { '/mount_protected' } else { '/mount' }
-        & $StartExe @("/box:$BoxName", "/key:$plain", $mountFlag)
+        # Start.exe is a GUI-subsystem program, so PowerShell only waits for it
+        # (and only sets $LASTEXITCODE) when its output is piped. Without the
+        # pipe, the launch below raced the mount and silently failed on the
+        # first click, leaving a mounted-but-empty box for the second click.
+        & $StartExe @("/box:$BoxName", "/key:$plain", $mountFlag) | Out-Null
 
         if ($LASTEXITCODE -ne 0) {
             throw "Mount failed (Start.exe exit code $LASTEXITCODE). Check the passphrase, box name, and that box-image encryption is actually enabled."
         }
+        $mountedHere = $true
     }
     finally {
         $plain = $null
@@ -128,4 +142,29 @@ if ($LaunchAfterMount) {
     }
     $launchCmd = @("/box:$BoxName", $LaunchProgram) + $LaunchArgs
     & $StartExe $launchCmd
+}
+
+# --- 7. Lock the box again once it is empty ----------------------------------
+# Only the instance that mounted the box watches it; relaunches exit above.
+# Two empty polls in a row ride out Discord's updater restarting the client,
+# and the grace period covers the launch before any process has appeared.
+if ($mountedHere -and $LaunchAfterMount -and $UnmountWhenEmpty) {
+    $seenRunning = $false
+    $emptyPolls  = 0
+    $graceUntil  = (Get-Date).AddSeconds(60)
+
+    while ($true) {
+        Start-Sleep -Seconds $PollSeconds
+        $count = Get-BoxProcessCount $StartExe $BoxName
+
+        if ($count -gt 0) {
+            $seenRunning = $true
+            $emptyPolls  = 0
+            continue
+        }
+        if (-not $seenRunning -and (Get-Date) -lt $graceUntil) { continue }
+        if (++$emptyPolls -ge 2) { break }
+    }
+
+    & $StartExe "/box:$BoxName" /unmount | Out-Null
 }

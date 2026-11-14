@@ -117,6 +117,49 @@ Add this path under **Resource Access → File Access → Direct Access**
 it as the airlock. Anything outside it stays isolated. Keep this path as narrow
 as you're comfortable with; widening it widens the host↔box surface.
 
+#### [Toggle] Paste/attach files from anywhere except AppData
+
+Privacy mode (`UsePrivacyMode=y`) hides every drive from the box, so a file
+copied in Explorer from, say, `D:\Projects\` arrives in Discord as a path the box
+cannot open and the paste silently fails. The rules live in a local template so
+they can only be switched on and off **together**:
+
+```ini
+[Template_Local_ReadHostFiles]
+Tmpl.Title=Read-only host files, AppData kept box-private
+Tmpl.Class=Local
+ReadFilePath=C:\*
+ReadFilePath=D:\*
+WriteFilePath=%USERPROFILE%\AppData\*
+WriteFilePath=%USERPROFILE%\.*
+
+[Discord]
+Template=Local_ReadHostFiles
+```
+
+- `ReadFilePath` grants **read-only** access to the host drives — nothing in the
+  box can write back to them.
+- `WriteFilePath=%USERPROFILE%\AppData\*` is more specific, so it wins (rule
+  specificity is always on in privacy mode) and keeps all of `AppData`
+  box-private: Discord's profile and session token (`Roaming\discord`), the
+  other folders Discord writes to (`Roaming\Microsoft`, `Roaming\NVIDIA`,
+  `Local\…`), and the host's own `AppData` — browser cookies and other apps'
+  tokens — which the box cannot see. The same goes for dot-folders such as
+  `.ssh` and `.aws`.
+- `WriteFilePath` is misleadingly named: it does **not** write to the host. It
+  hides the host copy and confines writes to the box's own copy inside the
+  encrypted image — the same rule that keeps `%LocalAppData%\Discord\` private.
+
+**Never use `ReadFilePath=C:\*` without the `AppData` line.** The box would then
+see your *host* `AppData` read-only, and Discord would fail to start with
+`EPERM: operation not permitted, mkdir '…\AppData\Roaming\discord\…'` because its
+own profile is hidden behind it — the template exists to make that split
+impossible.
+
+Folders exposed this way are read-only from inside the box, so save files to
+`Downloads` (the airlock). Comment out `Template=Local_ReadHostFiles` to restore
+full privacy isolation.
+
 
 #### [Optional] Browse inside the box at runtime even when it's locked
 
@@ -128,6 +171,81 @@ mkdir "%USERPROFILE%\Downloads\Explorer++"
 tar -xf "%USERPROFILE%\Downloads\explorerpp.zip" -C "%USERPROFILE%\Downloads\Explorer++"
 "%USERPROFILE%\Downloads\Explorer++\Explorer++.exe"
 ```
+
+#### [Toggle] Voice, hearing audio, camera and screen share
+
+`UseSecurityMode=y` is shorthand for three settings, and the driver ORs it with
+`RestrictDevices` (`restrict_devices = use_security_mode || RestrictDevices`), so
+adding `RestrictDevices=n` next to it does nothing. To control device access
+separately, `UseSecurityMode` is replaced by its parts:
+
+```ini
+UseRuleSpecificity=y
+SysCallLockDown=y
+DropAdminRights=y
+#RestrictDevices=y
+OpenDevCMApi=y
+Template=LessConfidentialBox
+SandboxieLogon=n
+AnonymousLogon=n
+#OriginalToken=y
+#NotifyBoxProtected=y
+```
+
+- `SysCallLockDown` + `DropAdminRights` keep the hardened token and syscall
+  filtering. ALPC/RPC connects are already on its approved list, so the audio
+  service (`\RPC Control\AudioSrv`, `AudioClientRpc`) is reachable.
+- `RestrictDevices=y` closes `\Device\*` except a short allow-list
+  (`[TemplateSModPaths]` in `Templates.ini`), which blocks camera, capture and
+  media endpoints. It is **commented out** so media works; uncomment to restore
+  it.
+- `OpenDevCMApi=y` lets the box enumerate host devices (microphones, cameras)
+  through the Configuration Manager API.
+- `LessConfidentialBox` exempts `audiodg.exe` from `ConfidentialBox`, so the
+  Windows audio engine can attach to Discord's audio streams. That is enough
+  for **playback**.
+- **Microphone: currently broken in every Sandboxie box** on recent Windows 11
+  builds (seen on 26300 with Sandboxie-Plus 1.18.8, still present in 1.19.0) —
+  [sandboxie-plus/Sandboxie#5615](https://github.com/sandboxie-plus/Sandboxie/issues/5615),
+  [#5672](https://github.com/sandboxie-plus/Sandboxie/issues/5672). The Windows
+  audio service refuses capture streams from Sandboxie's restricted process
+  token: `IAudioClient::Initialize` returns `E_INVALIDARG` (`0x80070057`) inside
+  any box — including a default, unhardened one — while the identical call
+  succeeds on the host. Playback is unaffected. `ConfidentialBox` exemptions,
+  `OpenDevCMApi`, and lifting `RestrictDevices` were all tested and do not
+  help.
+- **The cause is the token's user identity.** Before restricting the token,
+  Sandboxie replaces its user SID with a per-box Sandboxie account
+  (`SandboxieLogon=y`) or Anonymous Logon, and Windows now refuses capture for
+  that identity. `SandboxieLogon=n` + `AnonymousLogon=n` keep your real user SID
+  as the token's identity — **still deny-only**, with every group deny-only,
+  privileges stripped and Untrusted integrity — and capture works. Both lines
+  are needed: `AnonymousLogon` only matters once `SandboxieLogon` is off.
+  Tested one at a time with a WASAPI capture probe in the box:
+
+  | Token settings | Capture |
+  |---|---|
+  | defaults | fails |
+  | `NoUntrustedToken=y` | fails |
+  | `KeepLogonSession=y` | fails |
+  | `SandboxieLogon=n` + `AnonymousLogon=n` | **works** |
+  | `OriginalToken=y` | works |
+
+  What you give up: the box no longer has its own synthetic identity. File,
+  registry and IPC redirection are unaffected, so Discord's token stays inside
+  the encrypted box. Comment both lines out once a Sandboxie release fixes #5615.
+- `OriginalToken=y` also fixes capture, but it hands boxed processes your full
+  token (groups enabled, Medium integrity), and Sandboxie flags the box as an
+  *INSECURE configuration*. Prefer the identity pair above. Processes inherit
+  their parent's token under `OriginalToken`, so a Discord that restarts itself
+  keeps the old token — empty the box before relaunching after toggling it.
+- `NotifyBoxProtected=y` makes every refused host access show up as an SBIE1318
+  message naming the host process — useful when diagnosing `ConfidentialBox`.
+
+If something still fails, uncomment the `#…Trace=D` lines in `Sandboxie.ini`,
+reload the config, reproduce the problem, then read the denied entries in
+SandMan's **Trace Log** — each one is a resource to open with a narrow
+`Normal…Path`/`Open…Path` rule. Re-comment the trace lines afterwards.
 
 ---
 
@@ -217,6 +335,15 @@ The `.ps1` is invoked through a small VBS wrapper (`launch-discord.vbs`) so no
 console window flashes; point your shortcut's target at that `.vbs`, give it
 Discord's icon, and pin it anywhere. A single click releases the passphrase after
 Windows Hello, mounts the box, and opens Dorion.
+
+**Locking again on exit.** A box mounted through `Start.exe /mount_protected`
+never auto-unmounts — `SbieDll_Mount` hard-codes `auto_unmount = FALSE`, so the
+"Lock the box when all processes stop" option from step 1 does not apply to it.
+The launch that mounted the box therefore keeps running hidden, polls
+`Start.exe /listpids` every 5 s, and runs `Start.exe /box:Discord /unmount` once
+the box has been empty for two polls in a row (`$UnmountWhenEmpty` in the
+script's configuration block). Closing Discord's window only hides it to the
+tray — use **Quit Discord** from the tray icon to empty and lock the box.
 
 The box password is never typed routinely or stored in plaintext — it
 exists only as TPM-sealed ciphertext, useless without this machine's TPM, and
