@@ -1,448 +1,374 @@
-# Encrypted Sandboxie-Plus Discord Setup
+# Discord in an Encrypted Sandboxie-Plus Box
 
-> **Prerequisite:** This guide assumes a one-year Sandboxie-Plus Personal-Advanced
-> subscription. The license can be reused on unlimited devices and continues to
-> work after expiry — only *updates* require renewal.
+Run the Discord desktop app inside an **encrypted, locked-down sandbox** so that
+your Discord login can't be stolen by malware running on your PC.
 
----
+What you get:
 
-## 1. Create the encrypted box
+- 🔒 **Your Discord login stays locked away.** Discord keeps its login token in
+  `%AppData%\discord`. Here that folder lives only inside an encrypted container
+  that other programs on your PC can't open — the classic "token grabber" has
+  nothing to grab.
+- 👆 **One click to start.** A desktop shortcut unlocks the container with
+  Windows Hello (PIN or fingerprint), opens Discord, and locks the container
+  again when you quit.
+- 🎙️ **Everything still works.** Voice, video, screen share, and pasting files.
+- 🌐 **Links open in your normal browser**, outside the sandbox.
 
-Create a new **secure, encrypted** box. During creation:
-
-- Enable **"Mount Box Image"** with **"Protect Box Root From Access By Unsandboxed Processes"**.
-  This protects the sandboxed filesystem from any process outside the box.
-- Enable **"Lock the box when all processes stop"** so the encrypted image
-  auto-unmounts once the last sandboxed program exits.
-
-You can verify root protection is active at `C:\Sandbox\YOUR_USER` while the
-sandbox is running (see [Verifying isolation](#5-verifying-isolation) below).
-
-![alt text](images/image.png)
-
-![alt text](images/image-1.png)
-
-![alt text](images/image-2.png)
-
-![alt text](images/image-3.png)
-
-![alt text](images/image-4.png)
-
-![alt text](images/image-5.png)
-
-![alt text](images/image-6.png)
-
-![alt text](images/image-7.png)
-
-![alt text](images/image-8.png)
-
-![alt text](images/image-10.png)
+> New to Sandboxie? A *sandbox* (or *box*) is a container that a program runs
+> inside. The program thinks it is using your normal files and settings, but its
+> changes land inside the box instead. See
+> [What is Sandboxie?](https://sandboxie-plus.com/sandboxie/) for the basics.
 
 ---
 
-## 2. Compatibility settings (required on Windows 11)
+## Contents
 
-In Sandboxie-Plus compatibility settings (**App Templates**), enable:
-
-- **"Chromium Fix for Windows 11"**
-
-Without this, Discord (and other Chromium-based apps) will fail to start on
-Windows 11.
-
-Disable "Make applications think they are running elevated" (the FakeAdminRights setting). Dorion's WebView2 rendering engine performs its own privilege checks at startup, and Sandboxie's fake elevation status conflicts with this, causing the app to launch with no visible window (silent WebView2 initialization failure, often paired with an SBIE2189 message or webview IPC error in the logs).
+1. [Before you start](#before-you-start)
+2. [Step 1 — Create the encrypted box](#step-1--create-the-encrypted-box)
+3. [Step 2 — Apply this guide's box settings](#step-2--apply-this-guides-box-settings)
+4. [Step 3 — Install Discord inside the box](#step-3--install-discord-inside-the-box)
+5. [Step 4 — Set up the one-click shortcut](#step-4--set-up-the-one-click-shortcut)
+6. [Using it day to day](#using-it-day-to-day)
+7. [Optional settings](#optional-settings)
+8. [Check that it's working](#check-that-its-working)
+9. [Troubleshooting](#troubleshooting)
+10. [Learn more](#learn-more)
 
 ---
 
-## 3. Install Discord inside the box
+## Before you start
 
-Make sure the box is mounted WITHOUT root protection for the installation. If root protection is on, the box's file system cannot be viewed in Windows Explorer.
+You'll need:
 
-Open a console **inside the encrypted sandbox**:
-right-click the box → **Run → Standard Applications → Command Console (Admin)**.
+- **Windows 11** with a **TPM** and **Windows Hello** (PIN or fingerprint) set up.
+  Most PCs from the last few years have both.
+- **[Sandboxie-Plus](https://sandboxie-plus.com/downloads/)** installed.
+- A **[Sandboxie-Plus supporter certificate](https://sandboxie-plus.com/supporter-certificate/)**.
+  Encrypted boxes and several protections below need one. A one-year
+  Personal-Advanced certificate works on any number of your devices and keeps
+  working after it expires — only *updates* need a renewal.
+- **This repository** downloaded somewhere on your PC. The examples below use
+  `D:\Sandboxie\discord-sandbox` — change that path to wherever you put it, and
+  change `megatron` to your Windows user name.
 
-Then run one of the following.
+---
 
-**Discord**
+## Step 1 — Create the encrypted box
 
-The manual install lays down Discord's files by hand rather than through the official installer. This produces an install that Discord's updater does not consider fully "finalized." Discord uses a native (Rust) updater — `updater.node`, loaded by the app on every launch — which validates its install plan against Discord's servers each time Discord starts.
+In Sandboxie-Plus, create a new box from the **Sandbox** menu (or the first
+toolbar button).
 
-When the installed version is the current published version, the updater tries tovalidate/finalize the *running* version. It finds `Discord.exe` already running from the target directory and treats this as fatal, throwing `InconsistentInstallerState: Attempt to install host that is currently running`. The window opens for a second, then closes.
+1. Name the box **`Discord`** and pick **Security Hardened Sandbox with Data
+   Protection**. Tick **Encrypt Box content and set Confidential** and
+   **Configure advanced options**.
 
-Installing a version that is *behind* the server (here 1.0.9255) sidesteps the crash, because it routes the updater down the ordinary update path instead of the fatal finalize-the-running-version path.
+   ![Create new sandbox: name "Discord", Security Hardened with Data Protection, Encrypt ticked](images/image.png)
 
-Because the installed version is behind the server, Discord's updater does exactly what it's designed to do: on launch it detects a newer version, downloads it in the background, and applies it. So the manual install is only a *bootstrap* — a known-good starting point that launches cleanly — and Discord brings itself up to the current version automatically from there. You end up running the latest Discord without ever hitting the installer (which fails in the Privacy Enhanced box) and without hitting the updater crash.
+2. When asked, set a **strong password** for the box image, and turn on:
+   - **Mount Box Image** with **Protect Box Root From Access By Unsandboxed
+     Processes** — programs outside the box can't read its files.
+   - **Lock the box when all processes stop**.
 
-```cmd#
-"D:\Sandboxie\discord-sandbox\scripts\shared\install-discord.bat"
-```
+3. Accept the remaining wizard pages as shown:
 
-IMPORTANT: Before running this script, ensure that you have the installation path (NOT the session cookie store path in 'Roaming/' mapped as a Sandboxie folder outside the encrypted box, for the icon to show up properly):
+   ![Isolation options: network allowed, admin options](images/image-1.png)
 
-![alt text](image.png)
+   ![Advanced options: prevent host programs loading sandboxed DLLs](images/image-2.png)
 
-**Dorion (lightweight Discord client):**
+Docs: [Box encryption](https://sandboxie-plus.com/sandboxie/boxencryption/) ·
+[Security Hardened mode](https://sandboxie-plus.com/security-mode/) ·
+[Data Protection (Privacy) mode](https://sandboxie-plus.com/privacy-mode/) ·
+[Confidential box](https://sandboxie-plus.com/sandboxie/confidentialbox/)
+
+---
+
+## Step 2 — Apply this guide's box settings
+
+Rather than ticking dozens of boxes by hand, copy the ready-made settings from
+this repository's [`Sandboxie.ini`](Sandboxie.ini).
+
+1. Right-click the **Discord** box → **Sandbox Options** → **Edit ini Section**.
+2. Replace the contents with everything under `[Discord]` in this repo's
+   [`Sandboxie.ini`](Sandboxie.ini) (don't include the `[Discord]` line itself),
+   fix the paths for your PC, and click **Apply**.
+3. For the optional [paste-from-anywhere](#paste-files-from-anywhere-on-your-pc)
+   feature, the `[Template_Local_ReadHostFiles]` section has to go in the main
+   configuration file too: open Notepad **as administrator**, open
+   `C:\Windows\Sandboxie.ini`, paste the section just above `[Discord]`, save,
+   then in Sandboxie-Plus choose **Options → Reload configuration**. To skip
+   the feature, delete the `Template=Local_ReadHostFiles` line instead.
+
+Changes take effect the next time Discord starts.
+
+<details>
+<summary>What these settings do, in plain words</summary>
+
+| Setting | What it does |
+|---|---|
+| Encryption + root protection | Discord's files, including your login, live in an encrypted file that only the box can open. ([docs](https://sandboxie-plus.com/sandboxie/usefileimage/)) |
+| Data Protection | The box can't see your personal files unless you allow it. ([docs](https://sandboxie-plus.com/privacy-mode/)) |
+| Confidential box | Programs on your PC can't peek into Discord's memory. ([docs](https://sandboxie-plus.com/sandboxie/confidentialbox/)) |
+| Hardening (`SysCallLockDown`, `DropAdminRights`) | Discord runs with very few rights. ([docs](https://sandboxie-plus.com/security-mode/)) |
+| `WriteFilePath=%LocalAppData%\Discord\` | Discord's program files are private to the box, so nothing outside can tamper with them. Despite the name, this does **not** write to your PC. ([docs](https://sandboxie-plus.com/sandboxie/writefilepath/)) |
+| `OpenPipePath=…\Downloads\` | Your **Downloads** folder is shared with the box — the way to move files in and out. ([docs](https://sandboxie-plus.com/sandboxie/openpipepath/)) |
+| `BreakoutProcess=msedge.exe` | Links open in Edge outside the box. Change it to `chrome.exe` or `firefox.exe` for your browser. ([docs](https://sandboxie-plus.com/sandboxie/breakoutprocess/)) |
+| `ForceFolder` / `ForceProcess` | Discord always starts inside the box, even if you start it some other way. ([docs](https://sandboxie-plus.com/sandboxie/forcefolder/)) |
+| Voice/camera lines | See [Voice, camera and screen share](#voice-camera-and-screen-share). |
+
+The full reasoning is in [docs/TECHNICAL.md](docs/TECHNICAL.md).
+</details>
+
+For reference, this is how the same settings look in the Sandboxie-Plus window:
+
+![Security Hardening tab](images/image-3.png)
+![Security Isolation tab](images/image-4.png)
+![Box Protection tab](images/image-5.png)
+![Advanced Security tab](images/image-6.png)
+![App Templates: Chromium fix for Windows 11 ticked](images/image-7.png)
+![Resource Access: Documents and Downloads opened](images/image-8.png)
+
+---
+
+## Step 3 — Install Discord inside the box
+
+Discord has to be installed **inside** the box so its files never touch your PC.
+
+1. In Sandboxie-Plus, right-click the **Discord** box →
+   **Run → Standard Applications → Command Console (Admin)**.
+2. Run the install script from this repo:
+
+   ```cmd
+   "D:\Sandboxie\discord-sandbox\scripts\shared\install-discord.bat"
+   ```
+
+The script installs a slightly **older** Discord on purpose. Discord's official
+installer doesn't work in this kind of box, and a hand-installed copy of the
+*current* version crashes on start. An older copy starts cleanly and then
+updates itself to the latest version in the background. (Details in
+[docs/TECHNICAL.md](docs/TECHNICAL.md#why-the-install-script-uses-an-older-discord).)
+
+> ⚠️ On some recent Windows 11 builds, console windows can't start inside any
+> Sandboxie box — see [Troubleshooting](#a-console-window-wont-open-in-the-box-sbie1231).
+
+<details>
+<summary>Alternative: Dorion, a lightweight Discord client</summary>
 
 ```cmd
 curl -L -o "%USERPROFILE%\Downloads\Dorion-setup.exe" "https://github.com/SpikeHD/Dorion/releases/download/v6.13.0/Dorion_6.13.0_x64-setup.exe"
 "%USERPROFILE%\Downloads\Dorion-setup.exe"
 ```
 
-Then right click the box and create a shortcut for the installed Dorion on your desktop:
-
-![alt text](images/image-9.png)
-
-Map the shortcut to use your chosen icon. Note that when the box is unmounted or protected, icons
-inside the box won't be available to Windows externally, and likewise to icons external; unless mapped to a shared folder.
+Dorion needs **Make applications think they are running elevated** turned
+**off** (`FakeAdminRights=n`), or its window never appears.
+([docs](https://sandboxie-plus.com/sandboxie/fakeadminrights/))
+</details>
 
 ---
 
-## 4. Resource access
+## Step 4 — Set up the one-click shortcut
 
-> **This is how you get files in and out of the encrypted box.**
+Instead of typing the box password every time, it's stored sealed inside your
+PC's security chip (TPM) and released only after Windows Hello confirms it's you.
 
-The box's file system is sealed: with root protection on, the sandboxed
-**Explorer closes immediately** and there is no in-box file browser by default,
-so you cannot drag files in through a sandboxed window. To move files between
-the host and the box, **one host folder is deliberately mapped through** — your
-**Downloads** folder:
+1. **Once:** open PowerShell and run the setup script. Enter the box password
+   when asked — it's encrypted with the TPM and never saved in plain text.
 
-```
-C:\Users\megatron\Downloads
-```
+   ```powershell
+   D:\Sandboxie\discord-sandbox\scripts\setup-sbiebox.ps1
+   ```
 
-Add this path under **Resource Access → File Access → Direct Access**
-(the "Open for All Programs" option). Once set:
+2. Open [`scripts/unlock-sbiebox.ps1`](scripts/unlock-sbiebox.ps1) in a text
+   editor and check the settings at the top — mainly `$StartExe` (where
+   Sandboxie-Plus is installed) and `$BoxName`.
 
-`Downloads` is the single, intentional opening in an otherwise sealed box — treat
-it as the airlock. Anything outside it stays isolated. Keep this path as narrow
-as you're comfortable with; widening it widens the host↔box surface.
+3. Create a desktop shortcut whose target is
+   `D:\Sandboxie\discord-sandbox\scripts\launch-discord.vbs`, give it Discord's
+   icon, and pin it to the taskbar or Start.
 
-#### [Toggle] Paste/attach files from anywhere except AppData
+Clicking the shortcut asks for Windows Hello, unlocks the box, and opens
+Discord. If Discord is already running, it just brings up another window.
 
-Privacy mode (`UsePrivacyMode=y`) hides every drive from the box, so a file
-copied in Explorer from, say, `D:\Projects\` arrives in Discord as a path the box
-cannot open and the paste silently fails. The rules live in a local template so
-they can only be switched on and off **together**:
+You can also start Discord from Sandboxie-Plus itself (right-click the box →
+**Box Content → Create Shortcut**), but then you type the box password yourself:
+
+![Sandboxie-Plus: Box Content → Create Shortcut](images/image-9.png)
+
+---
+
+## Using it day to day
+
+- **Start Discord:** click your shortcut and approve Windows Hello.
+- **Quit Discord:** right-click Discord's tray icon → **Quit Discord**. Closing
+  the window only hides it in the tray. Once Discord has fully quit, the box
+  locks itself within a few seconds.
+- **Send a file:** paste or drag it into Discord as usual. With the
+  [paste-from-anywhere](#paste-files-from-anywhere-on-your-pc) option on, this
+  works for files almost anywhere on your PC.
+- **Save a file from Discord:** save it to **Downloads** — the one folder shared
+  in both directions.
+- **Click a link:** it opens in your normal browser, outside the box.
+
+![Discord running inside the box, with Sandboxie's colored border](images/image-13.png)
+
+---
+
+## Optional settings
+
+Each option is a line in the `[Discord]` section. Add a `#` at the start of a
+line to turn it off, remove the `#` to turn it on, then restart Discord.
+
+### Paste files from anywhere on your PC
 
 ```ini
-[Template_Local_ReadHostFiles]
-Tmpl.Title=Read-only host files, AppData kept box-private
-Tmpl.Class=Local
-ReadFilePath=C:\*
-ReadFilePath=D:\*
-WriteFilePath=%USERPROFILE%\AppData\*
-WriteFilePath=%USERPROFILE%\.*
-
-[Discord]
 Template=Local_ReadHostFiles
 ```
 
-- `ReadFilePath` grants **read-only** access to the host drives — nothing in the
-  box can write back to them.
-- `WriteFilePath=%USERPROFILE%\AppData\*` is more specific, so it wins (rule
-  specificity is always on in privacy mode) and keeps all of `AppData`
-  box-private: Discord's profile and session token (`Roaming\discord`), the
-  other folders Discord writes to (`Roaming\Microsoft`, `Roaming\NVIDIA`,
-  `Local\…`), and the host's own `AppData` — browser cookies and other apps'
-  tokens — which the box cannot see. The same goes for dot-folders such as
-  `.ssh` and `.aws`.
-- `WriteFilePath` is misleadingly named: it does **not** write to the host. It
-  hides the host copy and confines writes to the box's own copy inside the
-  encrypted image — the same rule that keeps `%LocalAppData%\Discord\` private.
+Lets Discord **read** (never change) files on your `C:` and `D:` drives, so you
+can paste or attach them. Your `AppData` folder (browser logins, other apps'
+data, and Discord's own login) and hidden dot-folders such as `.ssh` stay
+invisible to the box.
 
-**Never use `ReadFilePath=C:\*` without the `AppData` line.** The box would then
-see your *host* `AppData` read-only, and Discord would fail to start with
-`EPERM: operation not permitted, mkdir '…\AppData\Roaming\discord\…'` because its
-own profile is hidden behind it — the template exists to make that split
-impossible.
+- Folders shared this way are read-only inside the box — save files to
+  Downloads instead.
+- To add another drive, add a `ReadFilePath=E:\*` line to the
+  `[Template_Local_ReadHostFiles]` section.
+- **Don't** add `ReadFilePath=C:\*` straight into `[Discord]`. Without the
+  template's `AppData` line, Discord can't start and your browser data becomes
+  visible to the box.
 
-Folders exposed this way are read-only from inside the box, so save files to
-`Downloads` (the airlock). Comment out `Template=Local_ReadHostFiles` to restore
-full privacy isolation.
+Docs: [ReadFilePath](https://sandboxie-plus.com/sandboxie/readfilepath/) ·
+[WriteFilePath](https://sandboxie-plus.com/sandboxie/writefilepath/) ·
+[Rule specificity](https://sandboxie-plus.com/sandboxie/rulespecificity/)
 
+### Voice, camera and screen share
 
-#### [Optional] Browse inside the box at runtime even when it's locked
-
-explorer.exe is the Windows shell itself, not just a file browser — it needs broad window-station, IPC, and COM access to function, which is exactly what a hardened/privacy-mode box restricts by default. Running it inside such a box typically crashes it immediately. Explorer++ works because it's a standalone app that browses files without needing shell-level privileges. It can be installed and opened using the following command:
-
-```cmd
-curl -L -o "%USERPROFILE%\Downloads\explorerpp.zip" "https://github.com/derceg/explorerplusplus/releases/download/version-1.4.0/explorerpp_x64.zip"
-mkdir "%USERPROFILE%\Downloads\Explorer++"
-tar -xf "%USERPROFILE%\Downloads\explorerpp.zip" -C "%USERPROFILE%\Downloads\Explorer++"
-"%USERPROFILE%\Downloads\Explorer++\Explorer++.exe"
-```
-
-#### [Toggle] Voice, hearing audio, camera and screen share
-
-`UseSecurityMode=y` is shorthand for three settings, and the driver ORs it with
-`RestrictDevices` (`restrict_devices = use_security_mode || RestrictDevices`), so
-adding `RestrictDevices=n` next to it does nothing. To control device access
-separately, `UseSecurityMode` is replaced by its parts:
+These are on by default in this guide's settings:
 
 ```ini
-UseRuleSpecificity=y
-SysCallLockDown=y
-DropAdminRights=y
 #RestrictDevices=y
 OpenDevCMApi=y
 Template=LessConfidentialBox
 SandboxieLogon=n
 AnonymousLogon=n
-#OriginalToken=y
-#NotifyBoxProtected=y
 ```
 
-- `SysCallLockDown` + `DropAdminRights` keep the hardened token and syscall
-  filtering. ALPC/RPC connects are already on its approved list, so the audio
-  service (`\RPC Control\AudioSrv`, `AudioClientRpc`) is reachable.
-- `RestrictDevices=y` closes `\Device\*` except a short allow-list
-  (`[TemplateSModPaths]` in `Templates.ini`), which blocks camera, capture and
-  media endpoints. It is **commented out** so media works; uncomment to restore
-  it.
-- `OpenDevCMApi=y` lets the box enumerate host devices (microphones, cameras)
-  through the Configuration Manager API.
-- `LessConfidentialBox` exempts `audiodg.exe` from `ConfidentialBox`, so the
-  Windows audio engine can attach to Discord's audio streams. That is enough
-  for **playback**.
-- **Microphone: currently broken in every Sandboxie box** on recent Windows 11
-  builds (seen on 26300 with Sandboxie-Plus 1.18.8, still present in 1.19.0) —
-  [sandboxie-plus/Sandboxie#5615](https://github.com/sandboxie-plus/Sandboxie/issues/5615),
-  [#5672](https://github.com/sandboxie-plus/Sandboxie/issues/5672). The Windows
-  audio service refuses capture streams from Sandboxie's restricted process
-  token: `IAudioClient::Initialize` returns `E_INVALIDARG` (`0x80070057`) inside
-  any box — including a default, unhardened one — while the identical call
-  succeeds on the host. Playback is unaffected. `ConfidentialBox` exemptions,
-  `OpenDevCMApi`, and lifting `RestrictDevices` were all tested and do not
-  help.
-- **The cause is the token's user identity.** Before restricting the token,
-  Sandboxie replaces its user SID with a per-box Sandboxie account
-  (`SandboxieLogon=y`) or Anonymous Logon, and Windows now refuses capture for
-  that identity. `SandboxieLogon=n` + `AnonymousLogon=n` keep your real user SID
-  as the token's identity — **still deny-only**, with every group deny-only,
-  privileges stripped and Untrusted integrity — and capture works. Both lines
-  are needed: `AnonymousLogon` only matters once `SandboxieLogon` is off.
-  Tested one at a time with a WASAPI capture probe in the box:
+| Line | Why it's needed | Docs |
+|---|---|---|
+| `#RestrictDevices=y` (off) | When on, it blocks the devices used for audio, camera and screen capture. | [RestrictDevices](https://sandboxie-plus.com/sandboxie/restrictdevices/) |
+| `OpenDevCMApi=y` | Lets Discord see your microphones and cameras. | [OpenDevCMApi](https://sandboxie-plus.com/sandboxie/opendevcmapi/) |
+| `Template=LessConfidentialBox` | Lets Windows' audio engine play Discord's sound. | [ConfidentialBox](https://sandboxie-plus.com/sandboxie/confidentialbox/) |
+| `SandboxieLogon=n` + `AnonymousLogon=n` | **Microphone fix.** A recent Windows update stopped microphones working in every Sandboxie box ([issue #5615](https://github.com/sandboxie-plus/Sandboxie/issues/5615)). These two lines fix it while keeping Discord locked down. Remove them once Sandboxie releases a fix. | [SandboxieLogon](https://sandboxie-plus.com/sandboxie/sandboxielogon/) |
 
-  | Token settings | Capture |
-  |---|---|
-  | defaults | fails |
-  | `NoUntrustedToken=y` | fails |
-  | `KeepLogonSession=y` | fails |
-  | `SandboxieLogon=n` + `AnonymousLogon=n` | **works** |
-  | `OriginalToken=y` | works |
-
-  What you give up: the box no longer has its own synthetic identity. File,
-  registry and IPC redirection are unaffected, so Discord's token stays inside
-  the encrypted box. Comment both lines out once a Sandboxie release fixes #5615.
-- `OriginalToken=y` also fixes capture, but it hands boxed processes your full
-  token (groups enabled, Medium integrity), and Sandboxie flags the box as an
-  *INSECURE configuration*. Prefer the identity pair above. Processes inherit
-  their parent's token under `OriginalToken`, so a Discord that restarts itself
-  keeps the old token — empty the box before relaunching after toggling it.
-- `NotifyBoxProtected=y` makes every refused host access show up as an SBIE1318
-  message naming the host process — useful when diagnosing `ConfidentialBox`.
-
-If something still fails, uncomment the `#…Trace=D` lines in `Sandboxie.ini`,
-reload the config, reproduce the problem, then read the denied entries in
-SandMan's **Trace Log** — each one is a resource to open with a narrow
-`Normal…Path`/`Open…Path` rule. Re-comment the trace lines afterwards.
+`OriginalToken=y` also fixes the microphone, but it removes much more
+protection and Sandboxie marks the box as insecure — use the two lines above
+instead. ([docs](https://sandboxie-plus.com/sandboxie/originaltoken/))
 
 ---
 
-## 5. Launching Discord
+## Check that it's working
 
-Sandboxie-Plus can create shortcuts directly from its embedded viewer, or you
-can launch the installed executable from a command line:
+With Discord running, open File Explorer and go to `C:\Sandbox\YOUR_USER\`.
+Opening the `Discord` folder should be refused:
 
-```cmd
-"D:\Sandboxie\Installer\SbiePlus_x64\Start.exe" /box:YOUR_BOX_NAME cmd.exe /c start "" "%LocalAppData%\Discord\Update.exe" --processStart Discord.exe
-```
+![File Explorer: "You don't currently have permission to access this folder"](images/image-14.png)
 
-```cmd
-"D:\Sandboxie\Installer\SbiePlus_x64\Start.exe" /box:YOUR_BOX_NAME cmd.exe /c start "" 
-"C:\Sandbox\megatron\Discord\user\current\AppData\Local\Dorion\Dorion.exe"
-```
-
-Replace `YOUR_BOX_NAME` with your box's name. If you installed Dorion instead,
-point the launch at Dorion's executable inside the box.
-
-Alternatively you can create a shortcut via the Sandboxie-Plus GUI:
-
-![alt text](images/image-9.png)
+Click **Cancel**. If you can browse inside the folder, root protection is off —
+revisit [Step 1](#step-1--create-the-encrypted-box).
 
 ---
 
-## 6. Links open outside the sandbox — msedge.exe is a breakout process
+## Troubleshooting
 
-> **`msedge.exe` is configured as a breakout process, so every link you click in
-> Discord opens in your normal browser *outside* the sandbox.**
+#### Discord says "EPERM: operation not permitted, mkdir …\AppData\Roaming\discord"
 
-This is set under **Program Control → Breakout Programs** (INI:
-`BreakoutProcess=msedge.exe`). When Discord hands a URL to the browser, Sandboxie
-lets that browser process "break out" and run **unsandboxed on the host**, rather
-than launching a browser trapped inside the box. Practically, that means:
+The box is showing Discord your PC's `AppData` instead of its own. This happens
+if `ReadFilePath=C:\*` is in the `[Discord]` section without the `AppData` rule.
+Use `Template=Local_ReadHostFiles` instead — see
+[Paste files from anywhere](#paste-files-from-anywhere-on-your-pc).
 
-- Clicking a link in Discord → opens in your host browser, normal session,
-  normal profile.
-- The sandbox stays dedicated to Discord itself; general web browsing happens on
-  the host as usual.
+#### Others can't hear me
 
-Substitute your actual browser's process name if you don't use Edge (e.g.
-`chrome.exe`, `firefox.exe`).
+1. Make sure the [voice settings](#voice-camera-and-screen-share) are in your
+   `[Discord]` section.
+2. Fully quit Discord, then in Sandboxie-Plus right-click the box →
+   **Terminate All Programs**, and start Discord again. Settings only apply to
+   programs started afterwards.
+3. Check **Windows Settings → Privacy & security → Microphone → Let desktop apps
+   access your microphone** is on.
 
-**Advanced variant:** if you'd rather the broken-out browser land in a *dedicated*
-web-browsing box instead of the host, pair the breakout with a
-BreakoutDocument / target-box directive so the broken-out program is captured
-into that other box rather than escaping to the host.
+#### Clicking the shortcut does nothing the first time
 
----
+Update to the latest `scripts/unlock-sbiebox.ps1` from this repo — older
+versions launched Discord before the box had finished unlocking.
 
-## 7. Verifying isolation
+#### The box stays unlocked after I close Discord
 
-With the box running, confirm the sandboxed filesystem is sealed from the host.
-In normal Windows File Explorer, try to open:
+Closing the window only hides Discord in the tray. Use **Quit Discord** from the
+tray icon. If you started Discord from Sandboxie-Plus rather than the shortcut,
+lock the box yourself: right-click it → **Unmount Box Image**.
 
-```
-C:\Sandbox\YOUR_USER\YOUR_SANDBOX\user\current\AppData\Roaming\discord
-```
+#### A console window won't open in the box (SBIE1231)
 
-Opening `C:\Sandbox\YOUR_USER` — or any path beneath it — should produce an
-**Access Denied** error from Windows.
+On some recent Windows 11 Insider builds, Sandboxie-Plus 1.18.8 can't start
+console programs (`cmd.exe`, PowerShell) in any box. The message log shows
+`SBIE1231 Initialization failed for process` followed by
+[`SBIE2314`](https://sandboxie-plus.com/sandboxie/sbie2314/). Discord itself is
+unaffected. Check for a newer Sandboxie-Plus release.
 
-## 8. Automatic unlock (TPM-sealed passphrase)
+#### Two Discord icons on the taskbar
 
-Rather than typing the box password each time, the passphrase is sealed to the
-machine's TPM and gated behind Windows Hello, then handed to Sandboxie to mount
-the box and open Discord. Two scripts handle this.
+![Two Discord taskbar icons](images/image-11.png)
 
-Run **`setup-sbiebox.ps1` once**, as the user who will launch the box. It creates
-a non-exportable RSA key inside the TPM (the private key can never leave the
-chip), prompts for the box passphrase a single time, encrypts it with that key,
-and writes only the ciphertext to `%LOCALAPPDATA%\sbiebox.bin` — the plaintext is
-never stored. Because the key is created with a ProtectKey UI policy, the TPM
-will demand Windows Hello (PIN or biometric) on every future decrypt. Re-running
-setup is blocked once the key exists; see the script header to reset.
+Give the shortcut the same identity Sandboxie gives the Discord window. With
+Discord open, run in PowerShell from this repo's folder:
 
-**`unlock-sbiebox.ps1` runs on every launch** and is what the shortcut actually
-calls. It first checks whether the box is already mounted; if it is, it skips
-straight to launching another client instance. If not, it opens the TPM key —
-triggering the Windows Hello prompt — decrypts the blob to recover the
-passphrase, mounts the encrypted box with root protection, scrubs the passphrase
-from memory, and launches Dorion inside the box. One shortcut therefore both
-opens the box the first time and relaunches afterward.
-
-The `.ps1` is invoked through a small VBS wrapper (`launch-discord.vbs`) so no
-console window flashes; point your shortcut's target at that `.vbs`, give it
-Discord's icon, and pin it anywhere. A single click releases the passphrase after
-Windows Hello, mounts the box, and opens Dorion.
-
-**Locking again on exit.** A box mounted through `Start.exe /mount_protected`
-never auto-unmounts — `SbieDll_Mount` hard-codes `auto_unmount = FALSE`, so the
-"Lock the box when all processes stop" option from step 1 does not apply to it.
-The launch that mounted the box therefore keeps running hidden, polls
-`Start.exe /listpids` every 5 s, and runs `Start.exe /box:Discord /unmount` once
-the box has been empty for two polls in a row (`$UnmountWhenEmpty` in the
-script's configuration block). Closing Discord's window only hides it to the
-tray — use **Quit Discord** from the tray icon to empty and lock the box.
-
-The box password is never typed routinely or stored in plaintext — it
-exists only as TPM-sealed ciphertext, useless without this machine's TPM, and
-unlockable only after Windows Hello confirms it's you. Combined with the
-auto-unmount from step 1, the encrypted box is mounted on demand and torn down
-when you're done. Note one boundary: mounting passes the passphrase on
-`Start.exe`'s command line, where it's briefly visible to local process
-inspection while the mount runs.
-
-### Troubleshooting Icon Not Appearing on Windows 11
-
-Make sure the installation directory (NOT the session/login token directory) is mapped OUTSIDE the box:
-
-```ini
-OpenFilePath=%LocalAppData%\Discord\
-```
-
-### Duplicate Taskbar Icons
-
-The AUMID needs to be set on the shortcut to be identical to the one Sandboxie-Plus sets:
-
-Make sure the sandboxed window is open before running the command in PowerShell:
-
-```PowerShell
+```powershell
 .\scripts\get-window-aumid.ps1 -ProcessName Discord
 ```
 
-![alt text](images/image-12.png)
+![Output showing the Aumid line](images/image-12.png)
 
-```PowerShell
+Then copy the `Aumid` value into:
+
+```powershell
 .\scripts\set-shortcut-aumid.ps1 -Aumid 'Sandbox.Discord.com_squirrel_Discord_Discord' -ShortcutName 'Discord.lnk' -RestartExplorer
 ```
 
-### Full Isolation
+#### The shortcut or taskbar icon is blank
 
-Change the mapping in `Sandboxie.ini` to the following for `%LocalAppData%\Discord\`:
+Refresh Windows' icon cache from a Command Prompt:
 
-```
-WriteFilePath=%LocalAppData%\Discord\
-```
-
-This allows the taskbar to resolve the icon (write-only `%LocalAppData%\Discord\`) BUT edits/changes to the directory outside the sandboxed runtime process DO NOT CHANGE what the box is using internally.
-
-This protects against **host-side client injection** — the one seam left open by the
-`OpenFilePath` icon fix above.
-
-With `OpenFilePath`, the sandboxed Discord reads its program files *directly from the
-host*, so any process running on the host as your user — **no admin required** — can
-write malicious JavaScript into Discord's core module:
-
-```
-%LocalAppData%\Discord\app-<version>\modules\discord_desktop_core-1\discord_desktop_core\index.js
-```
-
-Discord does not verify or sign these module files at load time, so on the next launch
-the box would **read that host file and execute it in-process, with your live token in
-memory**. This is exactly how a Discord token grabber persists and lifts a *valid,
-current* token without ever touching the encrypted session store — that store lives in
-`Roaming\` inside the box and is already invisible to the host (see
-[Verifying isolation](#7-verifying-isolation)). The install directory was the only piece
-still being read from the host, and therefore the only place an on-host grabber could
-reach code that runs inside the box.
-
-`WriteFilePath` closes it. A write-only path hides the host copy of
-`%LocalAppData%\Discord\` **from sandboxed processes only** — the box sees just its own
-in-box binaries and never reads host-side edits, so an injected `index.js` planted on the
-host has no effect on what runs inside. Host processes still see the real directory, which
-is why the **taskbar icon continues to resolve**: the shell (a host process) reads the
-host files, while the sandboxed runtime is insulated from any change made to them. Because
-the host copy is hidden from the box, Discord must be installed *inside* the box
-(step [3](#3-install-discord-inside-the-box)) — which this setup already does.
-
-See also: https://sandboxie-plus.com/sandboxie/writefilepath/
-
-The only remaining route to that code is execution *inside* the box itself (e.g. an
-untrusted Discord mod or plugin). Running **vanilla Discord and nothing else** in the box
-keeps that path closed as well.
-
-You can confirm the hiding works: with the box running, create a marker file such as
-`HOSTONLY.txt` in the host `%LocalAppData%\Discord\` directory, then list that directory
-from a **sandboxed** console — the marker should not appear. Delete it afterward. 
-
-### Verifying Task Icon Persistence
-
-Flush and reload the Windows icon cache:
-
-```sh
+```cmd
 taskkill /f /im explorer.exe
 ie4uinit.exe -show
 del /a /q "%LocalAppData%\IconCache.db"
 del /a /q "%LocalAppData%\Microsoft\Windows\Explorer\iconcache*"
-del /a /q "%LocalAppData%\Microsoft\Windows\Explorer\thumbcache*"
 start explorer.exe
 ```
 
+#### Still stuck?
+
+- Look in Sandboxie-Plus's **Messages** panel at the bottom — each `SBIExxxx`
+  code links to an explanation.
+- Turn on tracing to see exactly what the box blocks:
+  [File/IPC trace](https://sandboxie-plus.com/sandboxie/filetrace/).
+- Search the [Sandboxie-Plus issues](https://github.com/sandboxie-plus/Sandboxie/issues)
+  and [known conflicts](https://sandboxie-plus.com/sandboxie/knownconflicts/).
+
 ---
 
-*Confirmed working on Windows 11 Pro as of 2026-02-09 with enhanced security features enabled.*
+## Learn more
 
-![alt text](images/image-13.png)
+- [docs/TECHNICAL.md](docs/TECHNICAL.md) — how and why each part of this setup
+  works, with the test results behind it.
+- Sandboxie-Plus docs: [all settings (Sandboxie.ini)](https://sandboxie-plus.com/sandboxie/sandboxieini/) ·
+  [Resource access rules](https://sandboxie-plus.com/sandboxie/resourceaccess/) ·
+  [Start.exe command line](https://sandboxie-plus.com/sandboxie/startcommandline/)
+- Source code and issue tracker:
+  [github.com/sandboxie-plus/Sandboxie](https://github.com/sandboxie-plus/Sandboxie)
 
-![alt text](images/image-14.png)
+---
+
+*Last confirmed working on Windows 11 Pro build 26300 with Sandboxie-Plus 1.18.8,
+November 2026.*
