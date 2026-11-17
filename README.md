@@ -202,6 +202,9 @@ You can also start Discord from Sandboxie-Plus itself (right-click the box →
 - **Quit Discord:** right-click Discord's tray icon → **Quit Discord**. Closing
   the window only hides it in the tray. Once Discord has fully quit, the box
   locks itself within a few seconds.
+- **Updates:** before Discord starts, the shortcut clears out old Discord
+  versions, half-finished updates and caches inside the box, so updates don't
+  fill it up. What it removed is listed in `scripts\shared\cleanup.log`.
 - **Send a file:** paste or drag it into Discord as usual. With the
   [paste-from-anywhere](#paste-files-from-anywhere-on-your-pc) option on, this
   works for files almost anywhere on your PC.
@@ -296,6 +299,19 @@ Use `Template=Local_ReadHostFiles` instead — see
    programs started afterwards.
 3. Check **Windows Settings → Privacy & security → Microphone → Let desktop apps
    access your microphone** is on.
+
+#### Discord's updater keeps saying "Update failed, retrying"
+
+The box is full. Each Discord update adds a new copy of Discord beside the old
+ones, and the box has a fixed size. The shortcut clears them out, but only when
+the box is empty, so:
+
+1. Close the stuck updater: in Sandboxie-Plus, right-click the box →
+   **Terminate All Programs**. Wait a few seconds for the box to lock.
+2. Click the shortcut again.
+3. If it still fails, open `scripts\shared\cleanup.log`. Each `WARN` line says
+   what couldn't be removed and why. If nothing is left to remove, the box is
+   too small: make a bigger one.
 
 #### Clicking the shortcut does nothing the first time
 

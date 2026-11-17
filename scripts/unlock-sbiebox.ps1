@@ -43,6 +43,18 @@ $LaunchArgs    = @("--processStart", "Discord.exe")
 # login-time mount task rather than a launch shortcut).
 $LaunchAfterMount = $true
 
+# Free space inside the box before Discord starts. The box image has a fixed
+# size, and Discord's updater keeps old versions, failed installs and downloads
+# beside the new one until the image is full and the update loops on
+# "retrying". clean-discord.vbs runs inside the box, only when nothing else runs
+# there, and writes what it removed to $CleanLog. The log sits in
+# scripts\shared\ because the box writes there straight to the host
+# (OpenPipePath in Sandboxie.ini), so it stays readable after the box locks.
+$CleanBeforeLaunch   = $true
+$CleanScript         = Join-Path $PSScriptRoot "clean-discord.vbs"
+$CleanLog            = Join-Path $PSScriptRoot "shared\cleanup.log"
+$CleanTimeoutSeconds = 120
+
 # Boxes mounted through Start.exe never lock on their own: SbieDll_Mount
 # hard-codes auto_unmount = FALSE, so the box's "lock when all processes stop"
 # option does not apply. When $true, the instance that mounted the box keeps
@@ -128,6 +140,32 @@ if (-not $alreadyUp) {
     }
     finally {
         $plain = $null
+    }
+}
+
+# --- 5. Free space inside the box ------------------------------------------
+# Only when the box was empty: deleting versions or caches under a running
+# Discord would break it. wscript.exe rather than PowerShell because console
+# programs can't start in the box on this Windows build (docs/TECHNICAL.md,
+# "Known issues").
+if (-not $alreadyUp -and $CleanBeforeLaunch) {
+    if (Test-Path $CleanScript) {
+        $wscript = Join-Path $env:SystemRoot "System32\wscript.exe"
+        # Start-Process rather than & so the wait can time out: a hung cleanup
+        # must not keep Discord from starting. Start.exe /wait returns when the
+        # boxed wscript exits. Windows PowerShell joins -ArgumentList without
+        # quoting, hence the explicit quotes around the paths.
+        $cleanArgs = @("/box:$BoxName", "/wait", "`"$wscript`"", "//B", "//NoLogo",
+                       "`"$CleanScript`"", "`"$CleanLog`"")
+        $clean = Start-Process -FilePath $StartExe -ArgumentList $cleanArgs -PassThru -WindowStyle Hidden
+        if (-not $clean.WaitForExit($CleanTimeoutSeconds * 1000)) {
+            $msg = "{0:yyyy-MM-dd HH:mm:ss} WARN launcher: cleanup still running after $CleanTimeoutSeconds s; started Discord anyway" -f (Get-Date)
+            try { Add-Content -Path $CleanLog -Value $msg -ErrorAction Stop } catch { }
+        }
+    }
+    else {
+        $msg = "{0:yyyy-MM-dd HH:mm:ss} WARN launcher: $CleanScript not found; skipped cleanup. Restore it from the repo or set `$CleanBeforeLaunch = `$false." -f (Get-Date)
+        try { Set-Content -Path $CleanLog -Value $msg -ErrorAction Stop } catch { }
     }
 }
 

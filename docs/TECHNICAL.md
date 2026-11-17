@@ -206,6 +206,37 @@ apply. The launcher instance that mounted the box therefore stays running
 refuses to unmount while anything runs. Set `$UnmountWhenEmpty = $false` to
 disable this.
 
+### Freeing space before each launch
+
+The box image has a fixed size. Discord's updater unpacks each version into a
+new `app-<version>` folder, stages it in `download\` and
+`.app-<version>.installing`, and doesn't always remove the old ones. Once the
+image is full the next version can't unpack, and the updater loops on "Update
+failed, retrying".
+
+After mounting, and only if no program runs in the box, the launcher runs
+`clean-discord.vbs` inside the box and waits for it (up to 120 s) before
+starting `Update.exe`. It removes:
+
+- every `app-<version>` folder except the highest version, compared
+  numerically. That's the one `Update.exe --processStart` would run anyway.
+- `.app-*` folders (installs that never finished), the contents of `download\`,
+  `*.old` files, and `packages\*.nupkg` for versions no longer installed;
+- `%LocalAppData%\SquirrelTemp` and `%TEMP%` contents;
+- Chromium caches under `%AppData%\discord` (`Cache`, `Code Cache`, `GPUCache`,
+  the shader caches, service-worker caches, crash reports). It never touches
+  `Local Storage`, `IndexedDB` or `settings.json`, which hold the login and
+  settings. Set `CLEAR_CACHES = False` in the script to keep caches. Clearing
+  them makes the first load after each launch a little slower.
+
+It runs under `wscript.exe` because console programs can't start in the box
+(see [Known issues](#known-issues)). Every path resolves to the box's own copy.
+The log goes to `scripts\shared\cleanup.log` through the box's `OpenPipePath`,
+so it can be read after the box locks; each run overwrites it. Without its log
+argument the script exits at once, so double-clicking it on the host does
+nothing. Set `$CleanBeforeLaunch = $false` in `unlock-sbiebox.ps1` to disable
+the step.
+
 ### TPM-sealed passphrase
 
 `setup-sbiebox.ps1` creates a non-exportable RSA key in the TPM (Microsoft
