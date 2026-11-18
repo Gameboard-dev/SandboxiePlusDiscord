@@ -61,7 +61,7 @@ $LaunchLog = Join-Path $PSScriptRoot "shared\launch.log"
 
 # Boxes mounted through Start.exe never lock on their own: SbieDll_Mount
 # hard-codes auto_unmount = FALSE, so the box's "lock when all processes stop"
-# option does not apply. When $true, the instance that mounted the box keeps
+# option does not apply. When $true, the instance that started Discord keeps
 # running hidden and unmounts it once the box has been empty for two
 # consecutive polls. The service refuses to unmount while anything is running.
 $UnmountWhenEmpty = $true
@@ -114,7 +114,19 @@ $procCount = Get-BoxProcessCount $StartExe $BoxName
 $alreadyUp = ($null -ne $procCount -and $procCount -gt 0)
 $mountedHere = $false
 
-if (-not $alreadyUp) {
+$sbieDll = Join-Path (Split-Path $StartExe -Parent) "SbieDll.dll"
+if (-not (Test-Path $sbieDll)) {
+    throw "SbieDll.dll not found at $sbieDll. Set `$StartExe to Sandboxie-Plus's Start.exe."
+}
+Add-Type -Path (Join-Path $PSScriptRoot "SbieMount.cs")
+
+# Unlock only when the image isn't mounted. Deciding by running programs, as
+# before, asked for Windows Hello again whenever the box was unlocked but
+# empty, for example while Discord was still starting. IsMounted errs towards
+# "not mounted", so a wrong answer costs a prompt, never skips an unlock.
+$alreadyMounted = $alreadyUp -or [SbieMount]::IsMounted($sbieDll, $BoxName)
+
+if (-not $alreadyMounted) {
 
     # --- 1. Open the TPM-resident RSA key by its persistent name -------------
     $cng = [System.Security.Cryptography.CngKey]::Open(
@@ -134,12 +146,6 @@ if (-not $alreadyUp) {
     # to SbieDll_Mount in-process (SbieMount.cs) instead of to Start.exe's
     # /key: argument, so it never appears on a command line. Never convert it
     # to a [string]: strings can't be wiped.
-    $sbieDll = Join-Path (Split-Path $StartExe -Parent) "SbieDll.dll"
-    if (-not (Test-Path $sbieDll)) {
-        throw "SbieDll.dll not found at $sbieDll. Set `$StartExe to Sandboxie-Plus's Start.exe."
-    }
-    Add-Type -Path (Join-Path $PSScriptRoot "SbieMount.cs")
-
     $key = $null
     try {
         $key = $rsa.Decrypt($cipher, [System.Security.Cryptography.RSAEncryptionPadding]::OaepSHA256)
@@ -157,13 +163,14 @@ if (-not $alreadyUp) {
 }
 
 # Every step appends a timed line to one log, so a slow or failed start shows
-# which step the time went to. A fresh unlock starts a fresh log.
+# which step the time went to. A start into an empty box begins a fresh log.
 function Write-LaunchLog([string]$Level, [string]$Message) {
     $line = "{0:yyyy-MM-dd HH:mm:ss} {1} launcher: {2}" -f (Get-Date), $Level, $Message
     try { Add-Content -Path $LaunchLog -Value $line -ErrorAction Stop } catch { }
 }
-if ($mountedHere) {
-    try { Set-Content -Path $LaunchLog -Value ("{0:yyyy-MM-dd HH:mm:ss} INFO launcher: unlocked box $BoxName" -f (Get-Date)) -ErrorAction Stop } catch { }
+if (-not $alreadyUp) {
+    $first = if ($mountedHere) { "unlocked box $BoxName" } else { "box $BoxName already unlocked; no Windows Hello needed" }
+    try { Set-Content -Path $LaunchLog -Value ("{0:yyyy-MM-dd HH:mm:ss} INFO launcher: {1}" -f (Get-Date), $first) -ErrorAction Stop } catch { }
 }
 
 # --- 5 and 6. Clean up, then start Discord, from ONE boxed process -----------
@@ -193,10 +200,13 @@ if ($LaunchAfterMount) {
 }
 
 # --- 7. Lock the box again once it is empty ----------------------------------
-# Only the instance that mounted the box watches it; relaunches exit above.
+# The instance that started Discord into an empty box watches it, whether it
+# unlocked the box or found it unlocked; clicks while Discord runs don't.
 # Two empty polls in a row ride out Discord's updater restarting the client,
 # and the grace period covers the launch before any process has appeared.
-if ($mountedHere -and $LaunchAfterMount -and $UnmountWhenEmpty) {
+# If an earlier launcher is still watching too, both unmount once the box is
+# empty; the second unmount just fails.
+if (-not $alreadyUp -and $LaunchAfterMount -and $UnmountWhenEmpty) {
     $seenRunning = $false
     $emptyPolls  = 0
     $graceUntil  = (Get-Date).AddSeconds($LaunchGraceSeconds)

@@ -197,7 +197,8 @@ confirms it's you.
    icon, and pin it to the taskbar or Start.
 
 Clicking the shortcut asks for Windows Hello, unlocks the box, and opens
-Discord. If Discord is already running, it just brings up another window.
+Discord. If the box is already unlocked, it skips Windows Hello. If Discord is
+already running, it just brings up its window.
 
 You can also start Discord from Sandboxie-Plus itself (right-click the box →
 **Box Content → Create Shortcut**), but then you type the box password yourself:

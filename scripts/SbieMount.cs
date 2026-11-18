@@ -1,4 +1,5 @@
-// Mounts an encrypted Sandboxie-Plus box by calling SbieDll_Mount directly.
+// Mounts an encrypted Sandboxie-Plus box by calling SbieDll_Mount directly, and
+// tells whether it is already mounted (IsMounted).
 //
 // Why not `Start.exe /key:<password> /mount_protected`: Start.exe only takes the
 // password on its command line, and any program running as the same user can
@@ -27,16 +28,56 @@ public static class SbieMount
     // Resolve SbieDll.dll's own dependencies from its folder, not the search path.
     private const uint LOAD_WITH_ALTERED_SEARCH_PATH = 0x8;
 
-    // Bound by module name; Mount() loads it by full path first, so this
-    // resolves to that already-loaded copy and never to one found on PATH.
+    // Bound by module name; Load() loads it by full path first, so these
+    // resolve to that already-loaded copy and never to one found on PATH.
     [DllImport("SbieDll.dll", CharSet = CharSet.Unicode, CallingConvention = CallingConvention.StdCall)]
     [return: MarshalAs(UnmanagedType.U1)]
     private static extern bool SbieDll_Mount(string boxName, IntPtr boxKey, [MarshalAs(UnmanagedType.U1)] bool protect);
 
-    public static bool Mount(string sbieDllPath, string boxName, byte[] keyUtf8, bool protect)
+    // core/dll/sbieapi.h. Returns the box's file root as an NT path, such as
+    // \Device\HarddiskVolume3\Sandbox\<user>\<box>. Lengths are in bytes.
+    [DllImport("SbieDll.dll", CharSet = CharSet.Unicode)]
+    private static extern int SbieApi_QueryBoxPath(string boxName, StringBuilder filePath, IntPtr keyPath, IntPtr ipcPath,
+        ref uint filePathLen, IntPtr keyPathLen, IntPtr ipcPathLen);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint GetFileAttributesW(string path);
+
+    private const uint INVALID_FILE_ATTRIBUTES = 0xFFFFFFFF;
+    private const int ERROR_ACCESS_DENIED = 5;
+
+    private static void Load(string sbieDllPath)
     {
         if (LoadLibraryExW(sbieDllPath, IntPtr.Zero, LOAD_WITH_ALTERED_SEARCH_PATH) == IntPtr.Zero)
             throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not load " + sbieDllPath);
+    }
+
+    // Whether the box's encrypted image is mounted. An image box's file root
+    // exists only while it is mounted: Sandboxie creates it as a junction into
+    // the image volume and removes it on unmount. With root protection, opening
+    // it is refused (ERROR_ACCESS_DENIED), which also means "mounted". Anything
+    // else, including a failed query, returns false, so the caller unlocks as
+    // before: a wrong answer can cost a Windows Hello prompt, never skip a
+    // needed unlock.
+    public static bool IsMounted(string sbieDllPath, string boxName)
+    {
+        Load(sbieDllPath);
+        uint length = 0;
+        if (SbieApi_QueryBoxPath(boxName, null, IntPtr.Zero, IntPtr.Zero, ref length, IntPtr.Zero, IntPtr.Zero) != 0 || length == 0)
+            return false;
+        var root = new StringBuilder((int)(length / 2) + 1);
+        if (SbieApi_QueryBoxPath(boxName, root, IntPtr.Zero, IntPtr.Zero, ref length, IntPtr.Zero, IntPtr.Zero) != 0)
+            return false;
+
+        // \\?\GLOBALROOT lets Win32 file functions take an NT device path.
+        if (GetFileAttributesW(@"\\?\GLOBALROOT" + root.ToString()) != INVALID_FILE_ATTRIBUTES)
+            return true;
+        return Marshal.GetLastWin32Error() == ERROR_ACCESS_DENIED;
+    }
+
+    public static bool Mount(string sbieDllPath, string boxName, byte[] keyUtf8, bool protect)
+    {
+        Load(sbieDllPath);
 
         int length = Encoding.UTF8.GetCharCount(keyUtf8);
         char[] key = new char[length + 1];      // + NUL terminator for the WCHAR*

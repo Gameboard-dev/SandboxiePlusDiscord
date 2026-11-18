@@ -239,10 +239,14 @@ calls `SbieDll_Mount` in-process (see
 [TPM-sealed passphrase](#tpm-sealed-passphrase)), which returns only once the
 service has mounted the image.
 
-The launcher decides whether to unlock by counting the programs running in the
-box, not by checking whether it's mounted. A click while the box is mounted but
-empty (for example while Discord is still starting) therefore asks for Windows
-Hello again.
+The launcher asks for Windows Hello only when the image isn't mounted. It asks
+Sandboxie for the box's file root (`SbieApi_QueryBoxPath`) and checks it. An
+image box's root exists only while the image is mounted: Sandboxie creates it as
+a junction into the image volume and removes it on unmount. With root
+protection, opening it is refused, and that also counts as mounted. If the check
+fails for any reason, the launcher unlocks as before. A wrong answer can cost a
+prompt but never skip an unlock. Before this, the launcher counted running
+programs, so a click while the box was unlocked but empty asked again.
 
 ### Locking again on exit
 
@@ -250,8 +254,8 @@ Boxes mounted through `Start.exe /mount` or `/mount_protected` never
 auto-unmount: `SbieDll_Mount` (`core/dll/support.c`) hard-codes
 `auto_unmount = FALSE`, and the INI lookup for it in `core/svc/MountManager.cpp`
 is commented out. So the box's "lock when all processes stop" option doesn't
-apply. The launcher instance that mounted the box therefore stays running
-(hidden). It polls `Start.exe /box:Discord /listpids` every 5 s and runs
+apply. The launcher instance that started Discord into the empty box therefore
+stays running (hidden), whether it unlocked the box or found it unlocked. It polls `Start.exe /box:Discord /listpids` every 5 s and runs
 `/unmount` once the box has been empty for two polls in a row. The service
 refuses to unmount while anything runs. Set `$UnmountWhenEmpty = $false` to
 disable this.
