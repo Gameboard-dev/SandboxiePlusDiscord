@@ -18,14 +18,41 @@ grabbers work.
 
 | Layer | Setting | Stops |
 |---|---|---|
-| Encrypted image, protected root | [`UseFileImage`](https://sandboxie-plus.com/sandboxie/usefileimage/), mount with `/mount_protected` | Host programs reading the box's files, at rest or while mounted |
+| Encrypted image, protected root | [`UseFileImage`](https://sandboxie-plus.com/sandboxie/usefileimage/), mounted with root protection | Host programs reading the box's files, at rest or while mounted |
 | Confidential box | [`ConfidentialBox=y`](https://sandboxie-plus.com/sandboxie/confidentialbox/) | Host programs reading Discord's memory |
-| Box-private install dir | `WriteFilePath=%LocalAppData%\Discord\` | Host programs planting code into Discord (see below) |
+| Box-private install dir | Privacy mode, plus `WriteFilePath=%USERPROFILE%\AppData\*` in the paste template | Host programs planting code into Discord (see below) |
 | Hardened token | [`SysCallLockDown`](https://sandboxie-plus.com/sandboxie/syscalllockdown/), [`DropAdminRights`](https://sandboxie-plus.com/sandboxie/dropadminrights/), Untrusted integrity | A compromised Discord reaching out of the box |
 | Data Protection | [`UsePrivacyMode=y`](https://sandboxie-plus.com/privacy-mode/) | The box seeing your personal files |
+| Read-only launcher and Sandboxie files | `scripts\protect-folders.ps1`, run once as administrator | Host programs editing the scripts that handle the passphrase or run inside the box, or replacing Sandboxie's `Start.exe`/`SbieDll.dll` |
 
-What's left: code that runs **inside** the box (an untrusted Discord mod or
-plugin). Run vanilla Discord and nothing else in the box.
+What's left:
+
+- Code that runs **inside** the box (an untrusted Discord mod or plugin). Run
+  vanilla Discord and nothing else in the box.
+- Malware already running as you at the moment you approve Windows Hello (see
+  [TPM-sealed passphrase](#tpm-sealed-passphrase)).
+- Your desktop and taskbar shortcuts live in your profile, so a host program can
+  point them somewhere else. The Windows Hello prompt is then the only check:
+  approve it only straight after clicking the shortcut.
+- Unlocking the box from Sandboxie-Plus's own menu mounts it **without** root
+  protection, so host programs can read the token while it's open. Use the
+  shortcut.
+
+### Why the scripts must be read-only
+
+`unlock-sbiebox.ps1` handles the decrypted passphrase, and `clean-discord.vbs`
+runs inside the box, where it can read the token and write to `scripts\shared`
+on the host. By default every signed-in account can modify folders created on a
+second drive. So any program running as you could edit either script, or swap
+in its own `Start.exe` or `SbieDll.dll` for a portable install, and collect the
+passphrase or the token on your next launch.
+
+`protect-folders.ps1` makes the folder holding the repo admin-owned and
+read-only for your account. It then re-opens the repo for git and
+`scripts\shared` for transfers, leaving `scripts\` itself read-only. Changes to
+`scripts\` (edits, `git pull`) then need an elevated prompt. Ownership matters
+too: the owner of a folder can always rewrite its permissions, so the script
+makes Administrators the owner.
 
 ---
 
@@ -83,13 +110,30 @@ you — no admin needed — could edit
 ```
 
 and Discord would run that code inside the box, with the token in memory.
-Discord does not sign-check these files. `WriteFilePath` hides the host copy
-from the box, so host-side edits have no effect. Host programs, such as the
-taskbar, still see the host copy, so the icon still resolves.
+Discord does not sign-check these files. No `Open…Path` rule covers the folder
+now, so it falls under privacy mode's default and the paste template's
+`WriteFilePath=%USERPROFILE%\AppData\*`. Both keep it box-private, and host-side
+edits have no effect. Host programs, such as the taskbar, still see the host
+copy, so the icon still resolves.
 
 To check: with the box running, create `HOSTONLY.txt` in the host's
 `%LocalAppData%\Discord\`, list that folder from inside the box, and confirm the
 file isn't there.
+
+#### Don't add `WriteFilePath=%LocalAppData%\Discord\`
+
+An earlier version of this guide added that line to make the folder private
+explicitly. With it, opening a file in `%LocalAppData%\Discord` by name from
+inside the box reached the box's copy, but **listing** the folder returned the
+host's copy. Discord's updater lists its staging folder to finish an install,
+didn't find it, and failed with `The system cannot find the file specified (os
+error 2)`. The splash screen then looped on "Update failed, retrying". The line
+added no protection, since the `AppData` rule already covered the folder.
+Removing it made in-box listings show the box's own files, and the stuck update
+finished on the next start.
+
+To check: list `%LocalAppData%\Discord` from inside the box. You should see the
+box's `app-<version>` folders, not the host's.
 
 ---
 
@@ -186,13 +230,19 @@ Things tested that did **not** help capture: `DenyHostAccess=svchost.exe,n`,
 
 ### One click, one prompt
 
+The launcher used to mount with `Start.exe /key:… /mount_protected`.
 [`Start.exe`](https://sandboxie-plus.com/sandboxie/startcommandline/) is a
-GUI-subsystem program, so PowerShell's `&` doesn't wait for it — and doesn't set
-`$LASTEXITCODE` — unless its output is piped. Without the pipe, the
-`/mount_protected` call returned at once, the error check read a stale exit
-code, and `Update.exe` started before the box was mounted. The launch failed
-silently, leaving a mounted but empty box, so the second click prompted again
-and worked. `unlock-sbiebox.ps1` now pipes the mount call to `Out-Null`.
+GUI-subsystem program, so PowerShell's `&` doesn't wait for it unless its output
+is piped. Without the pipe, `Update.exe` started before the box was mounted, the
+launch failed silently, and the second click prompted again. The launcher now
+calls `SbieDll_Mount` in-process (see
+[TPM-sealed passphrase](#tpm-sealed-passphrase)), which returns only once the
+service has mounted the image.
+
+The launcher decides whether to unlock by counting the programs running in the
+box, not by checking whether it's mounted. A click while the box is mounted but
+empty (for example while Discord is still starting) therefore asks for Windows
+Hello again.
 
 ### Locking again on exit
 
@@ -206,6 +256,34 @@ apply. The launcher instance that mounted the box therefore stays running
 refuses to unmount while anything runs. Set `$UnmountWhenEmpty = $false` to
 disable this.
 
+### Starting Discord
+
+The launcher starts one `wscript.exe` in the box running `start-in-box.vbs`.
+That script runs the cleanup as a child, waits for it, then starts
+`Update.exe --processStart Discord.exe`.
+
+The cleanup and the start have to share one process because of how Sandboxie
+handles boxes with nothing left to do. Every time a program in the box exits,
+`SandboxieRpcSs` checks what's still running. If only its helpers remain
+(`SandboxieRpcSs`, `SandboxieDcomLaunch`, `SandboxieCrypto`, …), it calls
+`SbieDll_KillAll` and ends **every** program in the box
+([`apps/com/RpcSs/linger.c`](https://github.com/sandboxie-plus/Sandboxie/blob/master/Sandboxie/apps/com/RpcSs/linger.c)).
+When the cleanup ran as its own boxed process, its exit left only those helpers,
+and the kill-all ended Discord's launch about a second after it began. No `SBIE`
+message is logged for this, so it looked as if Discord simply never started.
+Starting Discord in a box where nothing had just exited always worked.
+
+`start-in-box.vbs` also checks that the program exists inside the box (a
+host-side check would only see the host's copy), waits for `Update.exe` to hand
+over to Discord, and logs its exit code. Everything goes to `launch.log`: the
+unlock, the cleanup and its duration, the start, and how long the first program
+took to appear. If nothing appears within `$LaunchGraceSeconds` (180 s), the
+launcher logs a warning and locks the box.
+
+While the box is mounted with root protection, Defender can't scan the box's
+files. `NotifyRootProtected=y` shows this as `SBIE1317 Blocked 'MsMpEng.exe' …`.
+That is root protection working as intended, and it doesn't stop Discord.
+
 ### Freeing space before each launch
 
 The box image has a fixed size. Discord's updater unpacks each version into a
@@ -214,9 +292,9 @@ new `app-<version>` folder, stages it in `download\` and
 image is full the next version can't unpack, and the updater loops on "Update
 failed, retrying".
 
-After mounting, and only if no program runs in the box, the launcher runs
+After mounting, and only if no program runs in the box, `start-in-box.vbs` runs
 `clean-discord.vbs` inside the box and waits for it (up to 120 s) before
-starting `Update.exe`. It removes:
+starting `Update.exe` (see [Starting Discord](#starting-discord)). It removes:
 
 - every `app-<version>` folder except the highest version, compared
   numerically. That's the one `Update.exe --processStart` would run anyway.
@@ -231,8 +309,9 @@ starting `Update.exe`. It removes:
 
 It runs under `wscript.exe` because console programs can't start in the box
 (see [Known issues](#known-issues)). Every path resolves to the box's own copy.
-The log goes to `scripts\shared\cleanup.log` through the box's `OpenPipePath`,
-so it can be read after the box locks; each run overwrites it. Without its log
+The log goes to `scripts\shared\launch.log` through the box's `OpenPipePath`,
+so it can be read after the box locks. Each launch starts a fresh log; the
+launcher and `start-in-box.vbs` then add their own timed lines to it. Without its log
 argument the script exits at once, so double-clicking it on the host does
 nothing. Set `$CleanBeforeLaunch = $false` in `unlock-sbiebox.ps1` to disable
 the step.
@@ -245,8 +324,20 @@ Windows Hello. It then encrypts the passphrase with OAEP-SHA256 and writes only
 the ciphertext to `%LOCALAPPDATA%\sbiebox.bin`. The plaintext is never stored.
 To reset, see the script header.
 
-The passphrase is briefly visible on `Start.exe`'s command line during the
-mount, to anything that inspects local processes.
+On each launch, after you approve Windows Hello, the TPM decrypts the
+passphrase into the launcher's memory as bytes. The launcher passes them to
+`SbieDll_Mount` (`scripts\SbieMount.cs`) and zeroes them right after the
+mount. It never puts them on a command line. `Start.exe` only accepts a password
+as `/key:<password>`, and any program running as you can read other programs'
+command lines without admin rights. Command-line auditing or Sysmon would also
+write them to a log on disk. `Start.exe` itself does nothing more than call the
+same export (`apps/start/start.cpp`).
+
+What this can't stop: malware **already running as you** can read or inject
+into the launcher's memory during the second or so the passphrase is there. It
+can also ask the TPM for a decrypt itself, which raises the same Windows Hello
+prompt. Approve Windows Hello only straight after clicking the shortcut. The
+same limits apply to typing the password into Sandboxie-Plus.
 
 ---
 

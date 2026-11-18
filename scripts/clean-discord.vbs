@@ -6,7 +6,7 @@
 ' full the updater can't unpack the next version and loops on "Update failed,
 ' retrying in N seconds".
 '
-' Runs INSIDE the box, started by unlock-sbiebox.ps1 after the mount and before
+' Runs INSIDE the box, started by start-in-box.vbs after the mount and before
 ' Update.exe, and only while nothing else runs in the box. Every path below
 ' resolves to the box's own copy, so nothing on the host is touched.
 '
@@ -17,7 +17,8 @@
 '
 ' Usage: wscript.exe //B //NoLogo clean-discord.vbs <log file>
 ' The log must sit in a folder the box writes straight to the host
-' (OpenPipePath), so it can be read after the box locks. Each run overwrites it.
+' (OpenPipePath), so it can be read after the box locks. Lines are appended:
+' the launcher starts a fresh log for each launch.
 
 Option Explicit
 
@@ -250,7 +251,7 @@ End Function
 
 Sub OpenLog(path)
     On Error Resume Next
-    Set logFile = fso.CreateTextFile(path, True)
+    Set logFile = fso.OpenTextFile(path, 8, True)   ' 8 = append, True = create
     If Err.Number <> 0 Then Set logFile = Nothing
     On Error GoTo 0
 End Sub

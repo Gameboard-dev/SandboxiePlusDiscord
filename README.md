@@ -107,10 +107,9 @@ Changes take effect the next time Discord starts.
 | Setting | What it does |
 |---|---|
 | Encryption + root protection | Discord's files, including your login, live in an encrypted file that only the box can open. ([docs](https://sandboxie-plus.com/sandboxie/usefileimage/)) |
-| Data Protection | The box can't see your personal files unless you allow it. ([docs](https://sandboxie-plus.com/privacy-mode/)) |
+| Data Protection | The box can't see your personal files unless you allow it. It also keeps Discord's program files and login private to the box, so nothing outside can read or tamper with them. ([docs](https://sandboxie-plus.com/privacy-mode/)) |
 | Confidential box | Programs on your PC can't peek into Discord's memory. ([docs](https://sandboxie-plus.com/sandboxie/confidentialbox/)) |
 | Hardening (`SysCallLockDown`, `DropAdminRights`) | Discord runs with very few rights. ([docs](https://sandboxie-plus.com/security-mode/)) |
-| `WriteFilePath=%LocalAppData%\Discord\` | Discord's program files are private to the box, so nothing outside can tamper with them. Despite the name, this does **not** write to your PC. ([docs](https://sandboxie-plus.com/sandboxie/writefilepath/)) |
 | `OpenPipePath=…\Downloads\` | Your **Downloads** folder is shared with the box — the way to move files in and out. ([docs](https://sandboxie-plus.com/sandboxie/openpipepath/)) |
 | `BreakoutProcess=msedge.exe` | Links open in Edge outside the box. Change it to `chrome.exe` or `firefox.exe` for your browser. ([docs](https://sandboxie-plus.com/sandboxie/breakoutprocess/)) |
 | `ForceFolder` / `ForceProcess` | Discord always starts inside the box, even if you start it some other way. ([docs](https://sandboxie-plus.com/sandboxie/forcefolder/)) |
@@ -168,8 +167,9 @@ Dorion needs **Make applications think they are running elevated** turned
 
 ## Step 4 — Set up the one-click shortcut
 
-Instead of typing the box password every time, it's stored sealed inside your
-PC's security chip (TPM) and released only after Windows Hello confirms it's you.
+Instead of typing the box password every time, it's stored encrypted, and only
+your PC's security chip (TPM) can decrypt it, each time after Windows Hello
+confirms it's you.
 
 1. **Once:** open PowerShell and run the setup script. Enter the box password
    when asked — it's encrypted with the TPM and never saved in plain text.
@@ -182,7 +182,17 @@ PC's security chip (TPM) and released only after Windows Hello confirms it's you
    editor and check the settings at the top — mainly `$StartExe` (where
    Sandboxie-Plus is installed) and `$BoxName`.
 
-3. Create a desktop shortcut whose target is
+3. **Once, as administrator:** make the scripts and Sandboxie's files read-only
+   for your normal account, so other programs can't tamper with what handles
+   your password ([why](docs/TECHNICAL.md#why-the-scripts-must-be-read-only)).
+   Do this after step 2. Later edits to `scripts\` need an administrator
+   prompt.
+
+   ```powershell
+   D:\Sandboxie\discord-sandbox\scripts\protect-folders.ps1
+   ```
+
+4. Create a desktop shortcut whose target is
    `D:\Sandboxie\discord-sandbox\scripts\launch-discord.vbs`, give it Discord's
    icon, and pin it to the taskbar or Start.
 
@@ -204,7 +214,8 @@ You can also start Discord from Sandboxie-Plus itself (right-click the box →
   locks itself within a few seconds.
 - **Updates:** before Discord starts, the shortcut clears out old Discord
   versions, half-finished updates and caches inside the box, so updates don't
-  fill it up. What it removed is listed in `scripts\shared\cleanup.log`.
+  fill it up. What it removed, and how each launch went, is in
+  `scripts\shared\launch.log`.
 - **Send a file:** paste or drag it into Discord as usual. With the
   [paste-from-anywhere](#paste-files-from-anywhere-on-your-pc) option on, this
   works for files almost anywhere on your PC.
@@ -302,21 +313,31 @@ Use `Template=Local_ReadHostFiles` instead — see
 
 #### Discord's updater keeps saying "Update failed, retrying"
 
-The box is full. Each Discord update adds a new copy of Discord beside the old
-ones, and the box has a fixed size. The shortcut clears them out, but only when
-the box is empty, so:
+There are two causes:
 
-1. Close the stuck updater: in Sandboxie-Plus, right-click the box →
-   **Terminate All Programs**. Wait a few seconds for the box to lock.
-2. Click the shortcut again.
-3. If it still fails, open `scripts\shared\cleanup.log`. Each `WARN` line says
-   what couldn't be removed and why. If nothing is left to remove, the box is
-   too small: make a bigger one.
+- **`WriteFilePath=%LocalAppData%\Discord\` is in your `[Discord]` section.** An
+  earlier version of this guide added it. Discord's updater then can't see the
+  update it just downloaded, and fails every time. Remove the line (see
+  [the technical notes](docs/TECHNICAL.md#dont-add-writefilepathlocalappdatadiscord)),
+  then quit and restart Discord. The stuck update finishes by itself.
+- **The box is full.** Each Discord update adds a new copy of Discord beside the
+  old ones, and the box has a fixed size. The shortcut clears out old copies,
+  but only when nothing is running in the box:
+  1. Close the stuck updater: in Sandboxie-Plus, right-click the box →
+     **Terminate All Programs**. Wait a few seconds for the box to lock.
+  2. Click the shortcut again.
+  3. If it still fails, open `scripts\shared\launch.log`. Each `WARN` line
+     says what couldn't be removed and why. If nothing is left to remove, the
+     box is too small: make a bigger one.
 
 #### Clicking the shortcut does nothing the first time
 
-Update to the latest `scripts/unlock-sbiebox.ps1` from this repo — older
-versions launched Discord before the box had finished unlocking.
+Update to the latest `scripts\` from this repo. Older versions launched Discord
+before the box had finished unlocking, or ran the cleanup as a separate
+program, after which Sandboxie ended Discord's launch
+([details](docs/TECHNICAL.md#starting-discord)). Then open
+`scripts\shared\launch.log`: it shows each step of the last launch, with
+timings, and a `WARN` line for whatever failed.
 
 #### The box stays unlocked after I close Discord
 

@@ -31,8 +31,9 @@ $KeyName = "SbieBoxKey"
 # Path to the encrypted passphrase blob written at setup time.
 $CipherFile = "$env:LOCALAPPDATA\sbiebox.bin"
 
-# Use /mount_protected instead of /mount for SbieDrv root protection.
-# Requires OpenFilePath paths configured on the box; leave $false unless set up.
+# Mount with SbieDrv root protection (what Start.exe calls /mount_protected):
+# while the box is unlocked, only programs inside the box, Sandboxie's service,
+# csrss.exe and the Sandboxie-Plus window can open its files.
 $UseProtectedMount = $true
 
 # Program to launch inside the box after mounting, plus its arguments.
@@ -46,14 +47,17 @@ $LaunchAfterMount = $true
 # Free space inside the box before Discord starts. The box image has a fixed
 # size, and Discord's updater keeps old versions, failed installs and downloads
 # beside the new one until the image is full and the update loops on
-# "retrying". clean-discord.vbs runs inside the box, only when nothing else runs
-# there, and writes what it removed to $CleanLog. The log sits in
-# scripts\shared\ because the box writes there straight to the host
-# (OpenPipePath in Sandboxie.ini), so it stays readable after the box locks.
-$CleanBeforeLaunch   = $true
-$CleanScript         = Join-Path $PSScriptRoot "clean-discord.vbs"
-$CleanLog            = Join-Path $PSScriptRoot "shared\cleanup.log"
-$CleanTimeoutSeconds = 120
+# "retrying". clean-discord.vbs runs inside the box just before Discord starts,
+# only when nothing else runs there, and logs what it removed to $LaunchLog.
+# It gets 120 s at most (CLEAN_TIMEOUT_S in start-in-box.vbs).
+$CleanBeforeLaunch = $true
+$CleanScript       = Join-Path $PSScriptRoot "clean-discord.vbs"
+
+# One log per launch: the cleanup, each launcher step with timings, and the
+# result of starting Discord. It sits in scripts\shared\ because the box writes
+# there straight to the host (OpenPipePath in Sandboxie.ini), so it stays
+# readable after the box locks.
+$LaunchLog = Join-Path $PSScriptRoot "shared\launch.log"
 
 # Boxes mounted through Start.exe never lock on their own: SbieDll_Mount
 # hard-codes auto_unmount = FALSE, so the box's "lock when all processes stop"
@@ -62,6 +66,11 @@ $CleanTimeoutSeconds = 120
 # consecutive polls. The service refuses to unmount while anything is running.
 $UnmountWhenEmpty = $true
 $PollSeconds      = 5
+
+# How long after launch to wait for the first program to appear in the box
+# before treating the start as failed and locking the box. A normal start
+# takes seconds; the margin covers a slow first start after an update.
+$LaunchGraceSeconds = 180
 
 # ============================================================================
 #  END CONFIGURATION
@@ -120,66 +129,67 @@ if (-not $alreadyUp) {
     }
     $cipher = [IO.File]::ReadAllBytes($CipherFile)
 
-    # --- 3. Decrypt inside the TPM to recover the passphrase ------
-    $plain = $null
+    # --- 3. Decrypt inside the TPM, then mount ------------------------------
+    # The passphrase stays a byte[] that is zeroed in `finally`, and is handed
+    # to SbieDll_Mount in-process (SbieMount.cs) instead of to Start.exe's
+    # /key: argument, so it never appears on a command line. Never convert it
+    # to a [string]: strings can't be wiped.
+    $sbieDll = Join-Path (Split-Path $StartExe -Parent) "SbieDll.dll"
+    if (-not (Test-Path $sbieDll)) {
+        throw "SbieDll.dll not found at $sbieDll. Set `$StartExe to Sandboxie-Plus's Start.exe."
+    }
+    Add-Type -Path (Join-Path $PSScriptRoot "SbieMount.cs")
+
+    $key = $null
     try {
-        $plain = [Text.Encoding]::UTF8.GetString(
-            $rsa.Decrypt($cipher, [System.Security.Cryptography.RSAEncryptionPadding]::OaepSHA256))
-
-        $mountFlag = if ($UseProtectedMount) { '/mount_protected' } else { '/mount' }
-        # Start.exe is a GUI-subsystem program, so PowerShell only waits for it
-        # (and only sets $LASTEXITCODE) when its output is piped. Without the
-        # pipe, the launch below raced the mount and silently failed on the
-        # first click, leaving a mounted-but-empty box for the second click.
-        & $StartExe @("/box:$BoxName", "/key:$plain", $mountFlag) | Out-Null
-
-        if ($LASTEXITCODE -ne 0) {
-            throw "Mount failed (Start.exe exit code $LASTEXITCODE). Check the passphrase, box name, and that box-image encryption is actually enabled."
+        $key = $rsa.Decrypt($cipher, [System.Security.Cryptography.RSAEncryptionPadding]::OaepSHA256)
+        # Synchronous: returns once the service has mounted the image, so the
+        # launch below can't race the mount.
+        if (-not [SbieMount]::Mount($sbieDll, $BoxName, $key, $UseProtectedMount)) {
+            throw "Mount failed: SbieDll_Mount returned FALSE for box '$BoxName'. Check Sandboxie-Plus's Messages panel (SBIE2243 means a wrong passphrase) and that box-image encryption is enabled."
         }
         $mountedHere = $true
     }
     finally {
-        $plain = $null
+        if ($key) { [Array]::Clear($key, 0, $key.Length) }
+        $key = $null
     }
 }
 
-# --- 5. Free space inside the box ------------------------------------------
-# Only when the box was empty: deleting versions or caches under a running
-# Discord would break it. wscript.exe rather than PowerShell because console
-# programs can't start in the box on this Windows build (docs/TECHNICAL.md,
-# "Known issues").
-if (-not $alreadyUp -and $CleanBeforeLaunch) {
-    if (Test-Path $CleanScript) {
-        $wscript = Join-Path $env:SystemRoot "System32\wscript.exe"
-        # Start-Process rather than & so the wait can time out: a hung cleanup
-        # must not keep Discord from starting. Start.exe /wait returns when the
-        # boxed wscript exits. Windows PowerShell joins -ArgumentList without
-        # quoting, hence the explicit quotes around the paths.
-        $cleanArgs = @("/box:$BoxName", "/wait", "`"$wscript`"", "//B", "//NoLogo",
-                       "`"$CleanScript`"", "`"$CleanLog`"")
-        $clean = Start-Process -FilePath $StartExe -ArgumentList $cleanArgs -PassThru -WindowStyle Hidden
-        if (-not $clean.WaitForExit($CleanTimeoutSeconds * 1000)) {
-            $msg = "{0:yyyy-MM-dd HH:mm:ss} WARN launcher: cleanup still running after $CleanTimeoutSeconds s; started Discord anyway" -f (Get-Date)
-            try { Add-Content -Path $CleanLog -Value $msg -ErrorAction Stop } catch { }
-        }
-    }
-    else {
-        $msg = "{0:yyyy-MM-dd HH:mm:ss} WARN launcher: $CleanScript not found; skipped cleanup. Restore it from the repo or set `$CleanBeforeLaunch = `$false." -f (Get-Date)
-        try { Set-Content -Path $CleanLog -Value $msg -ErrorAction Stop } catch { }
-    }
+# Every step appends a timed line to one log, so a slow or failed start shows
+# which step the time went to. A fresh unlock starts a fresh log.
+function Write-LaunchLog([string]$Level, [string]$Message) {
+    $line = "{0:yyyy-MM-dd HH:mm:ss} {1} launcher: {2}" -f (Get-Date), $Level, $Message
+    try { Add-Content -Path $LaunchLog -Value $line -ErrorAction Stop } catch { }
+}
+if ($mountedHere) {
+    try { Set-Content -Path $LaunchLog -Value ("{0:yyyy-MM-dd HH:mm:ss} INFO launcher: unlocked box $BoxName" -f (Get-Date)) -ErrorAction Stop } catch { }
 }
 
-# --- 6. Launch the program inside the box ------------------------------------
+# --- 5 and 6. Clean up, then start Discord, from ONE boxed process -----------
+# start-in-box.vbs runs the cleanup as a child, waits for it, then starts the
+# program, all from a single wscript.exe in the box. Two separate boxed runs
+# don't work: when the first exits, only SandboxieRpcSs's helpers are left, and
+# SandboxieRpcSs then kills every program in the box (apps/com/RpcSs/linger.c,
+# SbieDll_KillAll), including the launch that has just begun.
+# The cleanup runs only when the box was empty: deleting versions or caches
+# under a running Discord would break it.
+# wscript.exe because console programs (PowerShell, cmd) can't start in the box
+# on this Windows build (docs/TECHNICAL.md, "Known issues").
 if ($LaunchAfterMount) {
-    $deadline = (Get-Date).AddSeconds(15)
-    while (-not (Test-Path $LaunchProgram) -and (Get-Date) -lt $deadline) {
-        Start-Sleep -Milliseconds 300
+    $startScript = Join-Path $PSScriptRoot "start-in-box.vbs"
+    if (-not (Test-Path $startScript)) {
+        Write-LaunchLog "WARN" "$startScript not found; can't start $LaunchProgram. Restore it from the repo."
+        throw "$startScript not found. Restore it from the repo."
     }
-    if (-not (Test-Path $LaunchProgram)) {
-        throw "Launch program not found at $LaunchProgram after mount. Check the path and that the box mounted."
-    }
-    $launchCmd = @("/box:$BoxName", $LaunchProgram) + $LaunchArgs
-    & $StartExe $launchCmd
+    $clean = if (-not $alreadyUp -and $CleanBeforeLaunch) { $CleanScript } else { "-" }
+    $wscript = Join-Path $env:SystemRoot "System32\wscript.exe"
+    # Windows PowerShell joins -ArgumentList without quoting, hence the quotes.
+    $startArgs = @("/box:$BoxName", "`"$wscript`"", "//B", "//NoLogo", "`"$startScript`"",
+                   "`"$LaunchLog`"", "`"$clean`"", "`"$LaunchProgram`"") + ($LaunchArgs | ForEach-Object { "`"$_`"" })
+    Start-Process -FilePath $StartExe -ArgumentList $startArgs -WindowStyle Hidden
+    $launchedAt = Get-Date
+    Write-LaunchLog "INFO" ("asked the box to " + $(if ($clean -ne "-") { "clean up, then " } else { "" }) + "start $LaunchProgram")
 }
 
 # --- 7. Lock the box again once it is empty ----------------------------------
@@ -189,13 +199,16 @@ if ($LaunchAfterMount) {
 if ($mountedHere -and $LaunchAfterMount -and $UnmountWhenEmpty) {
     $seenRunning = $false
     $emptyPolls  = 0
-    $graceUntil  = (Get-Date).AddSeconds(60)
+    $graceUntil  = (Get-Date).AddSeconds($LaunchGraceSeconds)
 
     while ($true) {
         Start-Sleep -Seconds $PollSeconds
         $count = Get-BoxProcessCount $StartExe $BoxName
 
         if ($count -gt 0) {
+            if (-not $seenRunning) {
+                Write-LaunchLog "INFO" ("first program running in the box {0:N0} s after launch" -f ((Get-Date) - $launchedAt).TotalSeconds)
+            }
             $seenRunning = $true
             $emptyPolls  = 0
             continue
@@ -204,5 +217,11 @@ if ($mountedHere -and $LaunchAfterMount -and $UnmountWhenEmpty) {
         if (++$emptyPolls -ge 2) { break }
     }
 
+    if ($seenRunning) {
+        Write-LaunchLog "INFO" "box empty; locking it"
+    }
+    else {
+        Write-LaunchLog "WARN" "nothing started in the box within $LaunchGraceSeconds s of launch; locking it. Check Sandboxie-Plus's Messages panel for SBIE codes, then click the shortcut again."
+    }
     & $StartExe "/box:$BoxName" /unmount | Out-Null
 }

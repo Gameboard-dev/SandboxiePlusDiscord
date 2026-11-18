@@ -1,2 +1,2 @@
-# Written by scripts/clean-discord.vbs on every launch.
-scripts/shared/cleanup.log
+# Written on every launch by the launcher and its in-box scripts.
+scripts/shared/launch.log
